@@ -34,6 +34,8 @@
     "@types/react": "~19.2.4",
     "@types/react-dom": "~19.2.3",
     "@vitejs/plugin-react": "^6.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~57.0.2",
     "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",
     "lint-staged": "^17.5.1",
@@ -45,11 +47,11 @@
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx}": [
-      "eslint --fix",
-      "prettier --write"
+      "npx expo lint --fix",
+      "npx prettier --write"
     ],
     "*.{json,md,css,scss}": [
-      "prettier --write"
+      "npx prettier --write"
     ]
   },
   "scripts": {
@@ -61,7 +63,7 @@
     "lint": "expo lint",
     "type-check": "tsc --noEmit",
     "format:check": "prettier --check .",
-    "prepare": "husky"
+    "prepare": "cd ../.. && husky Frontend/MobileApp/.husky || true"
   },
   "private": true
 }
