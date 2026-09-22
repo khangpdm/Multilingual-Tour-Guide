@@ -59,6 +59,8 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
+    "type-check": "tsc --noEmit",
+    "format:check": "prettier --check .",
     "prepare": "husky"
   },
   "private": true
