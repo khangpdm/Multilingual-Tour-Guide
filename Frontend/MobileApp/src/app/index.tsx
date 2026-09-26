@@ -1,4 +1,5 @@
 import BottomNav from '@/components/BottomNav';
+import HomeScreen from '@/screen/HomeScreen';
 import { AppProvider, useApp } from '@/store/AppContext';
 import React from 'react';
 import { StatusBar, View } from 'react-native';
@@ -12,8 +13,9 @@ function AppShell() {
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       <View className="flex-1 w-full relative">
-        <View className={`absolute inset-0 ${activeTab === 'home' ? 'flex' : 'hidden'}`} />
-
+        <View className={`absolute inset-0 ${activeTab === 'home' ? 'flex' : 'hidden'}`}>
+          <HomeScreen />
+        </View>
         <View className={`absolute inset-0 ${activeTab === 'explore' ? 'flex' : 'hidden'}`} />
 
         <View className={`absolute inset-0 ${activeTab === 'scan' ? 'flex' : 'hidden'}`} />

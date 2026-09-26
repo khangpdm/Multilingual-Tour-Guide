@@ -38,8 +38,8 @@ export default function BottomNav() {
             key={id}
             onPress={() => setActiveTab(id)}
             activeOpacity={0.7}
-            className="flex-1 flex-col items-center justify-center gap-0.5 py-2 relative"
-            style={{ minHeight: 56 }}
+            className="flex-1 flex-col items-center justify-center gap-0.5 py-0.5 relative"
+            style={{ minHeight: 50 }}
           >
             {isCenter ? (
               <View
@@ -49,7 +49,6 @@ export default function BottomNav() {
                   height: 48,
                   backgroundColor: '#0d9488',
                   marginTop: -12,
-                  // Shadow tương đương `0 4px 12px rgba(13,148,136,0.4)`
                   shadowColor: '#0d9488',
                   shadowOffset: { width: 0, height: 4 },
                   shadowOpacity: 0.4,
@@ -57,11 +56,11 @@ export default function BottomNav() {
                   elevation: 6,
                 }}
               >
-                <Icon size={22} color="#FFFFFF" className="text-white" />
+                <Icon size={30} color="#FFFFFF" className="text-white" />
               </View>
             ) : (
               <Icon
-                size={22}
+                size={25}
                 color={active ? '#0d9488' : '#9ca3af'}
                 className={active ? 'text-teal-600' : 'text-gray-400'}
               />
