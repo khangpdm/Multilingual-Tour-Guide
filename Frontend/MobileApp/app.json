@@ -44,6 +44,12 @@
           "RNMapboxMapsImpl": "mapbox"
         }
       ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Show current location on map."
+        }
+      ],
       "expo-build-properties"
     ],
     "experiments": {

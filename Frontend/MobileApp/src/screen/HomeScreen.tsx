@@ -17,7 +17,7 @@ export default function HomeScreen() {
   const { language, setLanguage } = useApp();
   const currentLang = LANGS.find((l) => l.code === language);
   return (
-    <SafeAreaView className="flex-1 bg-white">
+    <View className="flex-1 bg-white">
       {/* HEADER */}
       <View className="z-10 flex-row items-center justify-between bg-white px-4 pb-2.5 pt-3 shadow-sm">
         <Text className="text-2xl font-extrabold tracking-tight text-teal-600">VietGuide</Text>
@@ -36,6 +36,6 @@ export default function HomeScreen() {
       <View className="flex-1 relative">
         <Mapsection />
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
