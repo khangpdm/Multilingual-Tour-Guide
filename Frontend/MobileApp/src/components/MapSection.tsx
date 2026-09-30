@@ -1,6 +1,16 @@
-import Mapbox, { Camera, LocationPuck, MapView, UserLocation } from '@rnmapbox/maps';
-import React, { useEffect, useRef, useState } from 'react';
+import { POIS } from '@/data/pois';
+import Mapbox, {
+  Camera,
+  Images,
+  LocationPuck,
+  MapView,
+  ShapeSource,
+  SymbolLayer,
+  UserLocation,
+} from '@rnmapbox/maps';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
+import pin from '../../assets/images/pin.png';
 import { IconTarget } from './Icons';
 
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
@@ -17,6 +27,25 @@ const Mapsection = () => {
 
   useEffect(() => {
     Mapbox.requestAndroidLocationPermissions();
+  }, []);
+
+  const poiGeoJSON = useMemo<GeoJSON.FeatureCollection>(() => {
+    return {
+      type: 'FeatureCollection',
+      features: POIS.map((poi) => ({
+        type: 'Feature',
+        id: poi.id,
+        geometry: {
+          type: 'Point',
+          coordinates: [poi.lng, poi.lat],
+        },
+        properties: {
+          id: poi.id,
+          name: poi.name.vi,
+          category: poi.category,
+        },
+      })),
+    };
   }, []);
 
   const handleUserLocationUpdate = (location: Mapbox.Location) => {
@@ -60,6 +89,21 @@ const Mapsection = () => {
         <Camera ref={cameraRef} zoomLevel={14} />
         <UserLocation onUpdate={handleUserLocationUpdate} />
         <LocationPuck puckBearingEnabled puckBearing="heading" pulsing={{ isEnabled: true }} />
+        <ShapeSource
+          id="poisSource"
+          shape={poiGeoJSON}
+          // onPress={handleSourcePress}
+        >
+          <Images images={{ pin }} />
+          <SymbolLayer
+            id="poisSymbols"
+            style={{
+              iconImage: 'pin',
+              iconSize: 0.1,
+              iconAllowOverlap: true,
+            }}
+          ></SymbolLayer>
+        </ShapeSource>
       </MapView>
 
       <TouchableOpacity
