@@ -1,6 +1,7 @@
 import { POIS } from '@/data/pois';
 import Mapbox, {
   Camera,
+  CircleLayer,
   Images,
   LocationPuck,
   MapView,
@@ -89,18 +90,55 @@ const Mapsection = () => {
         <Camera ref={cameraRef} zoomLevel={14} />
         <UserLocation onUpdate={handleUserLocationUpdate} />
         <LocationPuck puckBearingEnabled puckBearing="heading" pulsing={{ isEnabled: true }} />
+
+        <Images images={{ pin }} />
+
         <ShapeSource
           id="poisSource"
           shape={poiGeoJSON}
-          // onPress={handleSourcePress}
+          cluster
+          // onPress={(e) => console.log(JSON.stringify(e, null, 2))}
         >
-          <Images images={{ pin }} />
+          <CircleLayer
+            id="clusters"
+            filter={['has', 'point_count']}
+            style={{
+              circlePitchAlignment: 'map',
+              circleColor: '#00d4b0',
+              circleRadius: 20,
+              circleOpacity: 1,
+              circleStrokeWidth: 2,
+              circleStrokeColor: 'white',
+            }}
+          />
+
+          <SymbolLayer
+            id="clusters-count"
+            style={{
+              textField: ['get', 'point_count'],
+              textSize: 18,
+              textColor: 'white',
+              textPitchAlignment: 'map',
+            }}
+          />
+
           <SymbolLayer
             id="poisSymbols"
+            filter={['!', ['has', 'point_count']]}
             style={{
               iconImage: 'pin',
               iconSize: 0.1,
               iconAllowOverlap: true,
+              iconAnchor: 'bottom',
+
+              // textField: ['get', 'name'],
+              // textSize: 11,
+              // textAnchor: 'top',
+              // textOffset: [0, 1],
+              // textColor: '#1F2937',
+              // textHaloColor: '#FFFFFF',
+              // textHaloWidth: 1.5,
+              // textAllowOverlap: true,
             }}
           ></SymbolLayer>
         </ShapeSource>
