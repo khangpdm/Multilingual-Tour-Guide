@@ -1,4 +1,6 @@
 import { POIS } from '@/data/pois';
+import { useApp } from '@/store/AppContext';
+import { CategoryOption } from '@/types/map';
 import Mapbox, {
   Camera,
   CircleLayer,
@@ -9,6 +11,7 @@ import Mapbox, {
   SymbolLayer,
   UserLocation,
 } from '@rnmapbox/maps';
+
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import pin from '../../assets/images/pin.png';
@@ -20,10 +23,20 @@ if (MAPBOX_TOKEN) {
   Mapbox.setAccessToken(MAPBOX_TOKEN);
 }
 
+const CATEGORIES: CategoryOption[] = [
+  { id: 'all', label: 'Tất cả' },
+  { id: 'Bảo tàng', label: 'Bảo tàng' },
+  { id: 'Tôn giáo', label: 'Tôn giáo' },
+  { id: 'Công viên', label: 'Công viên' },
+];
+
 const Mapsection = () => {
   const cameraRef = useRef<Camera>(null);
-  const [hasFollowed, setHasFollowed] = useState(false);
 
+  const { language, selectedMapPOIId, setSelectedMapPOIId, selectedCategory, setSelectedCategory } =
+    useApp();
+
+  const [hasFollowed, setHasFollowed] = useState(false);
   const [userCoordinates, setUserCoordinates] = useState<[number, number] | null>(null);
 
   useEffect(() => {
@@ -31,6 +44,9 @@ const Mapsection = () => {
   }, []);
 
   const poiGeoJSON = useMemo<GeoJSON.FeatureCollection>(() => {
+    const filteredPois =
+      selectedCategory === 'all' ? POIS : POIS.filter((p) => p.category === selectedCategory);
+
     return {
       type: 'FeatureCollection',
       features: POIS.map((poi) => ({
@@ -47,7 +63,7 @@ const Mapsection = () => {
         },
       })),
     };
-  }, []);
+  }, [selectedCategory]);
 
   const handleUserLocationUpdate = (location: Mapbox.Location) => {
     if (location?.coords) {
@@ -78,10 +94,38 @@ const Mapsection = () => {
     }
   };
 
+  const handleShapeSourcePress = (e: any) => {
+    const feature = e.features?.[0] as GeoJSON.Feature;
+    if (!feature) return;
+
+    const geometry = feature.geometry as GeoJSON.Point;
+    const [lng, lat] = geometry.coordinates;
+    const props = feature.properties;
+
+    if (props?.cluster) {
+      cameraRef.current?.setCamera({
+        centerCoordinate: [lng, lat],
+        zoomLevel: 14,
+        animationDuration: 1000,
+      });
+      return;
+    }
+
+    if (props?.id) {
+      setSelectedMapPOIId(props.id);
+      cameraRef.current?.setCamera({
+        centerCoordinate: [lng, lat],
+        zoomLevel: 16,
+        animationDuration: 1000,
+      });
+    }
+  };
+
   return (
     <View className="relative flex-1 w-full h-full">
       <MapView
         style={{ flex: 1 }}
+        styleURL="mapbox://styles/phamdangminhkhang/cmummdaw2002s01r1a6lqc2en"
         logoEnabled={false}
         attributionEnabled={false}
         scaleBarEnabled={false}
@@ -93,12 +137,7 @@ const Mapsection = () => {
 
         <Images images={{ pin }} />
 
-        <ShapeSource
-          id="poisSource"
-          shape={poiGeoJSON}
-          cluster
-          // onPress={(e) => console.log(JSON.stringify(e, null, 2))}
-        >
+        <ShapeSource id="poisSource" shape={poiGeoJSON} cluster onPress={handleShapeSourcePress}>
           <CircleLayer
             id="clusters"
             filter={['has', 'point_count']}
@@ -131,19 +170,20 @@ const Mapsection = () => {
               iconAllowOverlap: true,
               iconAnchor: 'bottom',
 
-              // textField: ['get', 'name'],
-              // textSize: 11,
-              // textAnchor: 'top',
-              // textOffset: [0, 1],
-              // textColor: '#1F2937',
-              // textHaloColor: '#FFFFFF',
-              // textHaloWidth: 1.5,
-              // textAllowOverlap: true,
+              textField: ['get', 'name'],
+              textSize: 12,
+              textAnchor: 'top',
+              textOffset: [0, 1],
+              textColor: '#1F2937',
+              textHaloColor: '#FFFFFF',
+              textHaloWidth: 1.5,
+              textAllowOverlap: true,
             }}
           ></SymbolLayer>
         </ShapeSource>
       </MapView>
 
+      {/* NÚT RE-CENTER */}
       <TouchableOpacity
         activeOpacity={0.8}
         onPress={handleReCenter}
@@ -151,7 +191,7 @@ const Mapsection = () => {
         items-center justify-center active:bg-gray-100"
       >
         <Text className="font-bold text-teal-600">
-          <IconTarget />
+          <IconTarget color="#00897B" />
         </Text>
       </TouchableOpacity>
     </View>
