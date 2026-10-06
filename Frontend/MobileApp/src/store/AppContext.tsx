@@ -28,13 +28,17 @@ interface AppContextValue {
   selectedCategory: string;
   setSelectedCategory: (category: string) => void;
 
-  // Geofence(Tọa độ người dùng)
+  // Geofence
   userLat: number;
   userLng: number;
+  setUserLocation: (lat: number, lng: number) => void;
   activationRadius: number;
   setActivationRadius: (r: number) => void;
   demoLocation: DemoLocation;
   setDemoLocation: (m: DemoLocation) => void;
+
+  isDemoMode: boolean;
+  setIsDemoMode: (v: boolean) => void;
 
   // 6. Audio Player / Thuyết minh (TTS)
   isPlaying: boolean;
@@ -62,12 +66,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [selectedCategory, setSelectedCategory] = useState('Tất cả');
 
   // User location / Geofencing
-  const [demoLocation, setDemoLocation] = useState<DemoLocation>('near');
-  const [activationRadius, setActivationRadius] = useState(200); // Mặc định 200m
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [demoLocation, setDemoLocationState] = useState<DemoLocation>('near');
+  const [activationRadius, setActivationRadius] = useState(1000); // Mặc định 1000m
 
-  // Lấy tọa độ giả lập/thực tế dựa trên demoLocation
-  const userLat = DEMO_USER_LOCATIONS?.[demoLocation]?.lat ?? 10.7769;
-  const userLng = DEMO_USER_LOCATIONS?.[demoLocation]?.lng ?? 106.7009;
+  // Mặc định lấy tọa độ từ DEMO_USER_LOCATIONS['near']
+  const initialLocation = DEMO_USER_LOCATIONS?.near || { lat: 10.7769, lng: 106.7009 };
+  const [userLat, setUserLat] = useState<number>(initialLocation.lat);
+  const [userLng, setUserLng] = useState<number>(initialLocation.lng);
+
+  // Cập nhật vị trí GPS thực từ Mapbox UserLocation
+  const setDemoLocation = (mode: DemoLocation) => {
+    setDemoLocationState(mode);
+    setIsDemoMode(true); // Tự động bật chế độ Demo khi người dùng chọn Gần / Xa
+
+    if (DEMO_USER_LOCATIONS?.[mode]) {
+      setUserLat(DEMO_USER_LOCATIONS[mode].lat);
+      setUserLng(DEMO_USER_LOCATIONS[mode].lng);
+    }
+  };
+
+  const setUserLocation = (lat: number, lng: number) => {
+    // Chỉ cập nhật tọa độ thực từ Mapbox nếu KHÔNG ở trong Demo Mode
+    if (!isDemoMode) {
+      setUserLat(lat);
+      setUserLng(lng);
+    }
+  };
 
   // Audio state (Audio Player)
   const [isPlaying, setIsPlaying] = useState(false);
@@ -112,10 +137,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setSelectedCategory,
         userLat,
         userLng,
+        setUserLocation,
         activationRadius,
         setActivationRadius,
         demoLocation,
         setDemoLocation,
+        isDemoMode,
+        setIsDemoMode,
         isPlaying,
         playingPOIId,
         startPlayback,

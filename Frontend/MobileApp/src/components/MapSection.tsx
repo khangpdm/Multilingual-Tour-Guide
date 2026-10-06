@@ -30,11 +30,21 @@ const CATEGORIES: CategoryOption[] = [
   { id: 'Công viên', label: 'Công viên' },
 ];
 
-const Mapsection = () => {
+interface MapsectionProps {
+  onMapTouch?: () => void;
+}
+
+const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
   const cameraRef = useRef<Camera>(null);
 
-  const { language, selectedMapPOIId, setSelectedMapPOIId, selectedCategory, setSelectedCategory } =
-    useApp();
+  const {
+    language,
+    selectedMapPOIId,
+    setSelectedMapPOIId,
+    selectedCategory,
+    setSelectedCategory,
+    setUserLocation,
+  } = useApp();
 
   const [hasFollowed, setHasFollowed] = useState(false);
   const [userCoordinates, setUserCoordinates] = useState<[number, number] | null>(null);
@@ -58,12 +68,12 @@ const Mapsection = () => {
         },
         properties: {
           id: poi.id,
-          name: poi.name.vi,
+          name: typeof poi.name === 'object' ? poi.name[language] || poi.name.vi : poi.name,
           category: poi.category,
         },
       })),
     };
-  }, [selectedCategory]);
+  }, [selectedCategory, language]);
 
   const handleUserLocationUpdate = (location: Mapbox.Location) => {
     if (location?.coords) {
@@ -71,6 +81,7 @@ const Mapsection = () => {
       const coords: [number, number] = [longitude, latitude];
 
       setUserCoordinates(coords);
+      setUserLocation(latitude, longitude);
 
       if (!hasFollowed) {
         cameraRef.current?.setCamera({
@@ -130,6 +141,12 @@ const Mapsection = () => {
         attributionEnabled={false}
         scaleBarEnabled={false}
         compassEnabled={false}
+        onPress={() => {
+          onMapTouch?.();
+        }}
+        onTouchMove={() => {
+          onMapTouch?.();
+        }}
       >
         <Camera ref={cameraRef} zoomLevel={14} />
         <UserLocation onUpdate={handleUserLocationUpdate} />
@@ -187,7 +204,7 @@ const Mapsection = () => {
       <TouchableOpacity
         activeOpacity={0.8}
         onPress={handleReCenter}
-        className="absolute bottom-6 right-5 bg-white px-4 py-3 rounded-full shadow-lg border border-gray-100
+        className="absolute top-3 right-5 bg-white px-4 py-3 rounded-full shadow-lg border border-gray-100
         items-center justify-center active:bg-gray-100"
       >
         <Text className="font-bold text-teal-600">

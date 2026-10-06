@@ -1,5 +1,5 @@
 import BottomNav from '@/components/BottomNav';
-import HomeScreen from '@/screen/HomeScreen';
+import HomeScreen from '@/screen/HomeScreen/HomeScreen';
 import { AppProvider, useApp } from '@/store/AppContext';
 import React from 'react';
 import { StatusBar, View } from 'react-native';
