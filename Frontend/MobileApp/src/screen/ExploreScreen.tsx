@@ -5,9 +5,11 @@ import {
   formatDistance,
   haversineDistance,
   type Category,
+  type POI,
 } from '@/data/pois';
 import { useApp } from '@/store/AppContext';
-import { Image, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { FlatList, Image, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 const CATEGORIES = [
   'Tất cả',
@@ -34,28 +36,74 @@ export default function ExploreScreen() {
     downloads,
   } = useApp();
 
-  let filtered = POIS.filter((p) => {
-    const matchCat = exploreCategory === 'Tất cả' || p.category === exploreCategory;
-    const q = exploreSearch.toLowerCase();
-    const matchQ =
-      !q || p.name[language]?.toLowerCase().includes(q) || p.address.toLowerCase().includes(q);
-    return matchCat && matchQ;
-  });
+  const filteredPOIs = useMemo(() => {
+    const q = exploreSearch.trim().toLowerCase();
 
-  if (exploreSort === 'distance') {
-    filtered = filtered.sort(
-      (a, b) =>
-        haversineDistance(userLat, userLng, a.lat, a.lng) -
-        haversineDistance(userLat, userLng, b.lat, b.lng)
-    );
-  } else {
-    filtered = filtered.sort((a, b) =>
-      (a.name[language] ?? '').localeCompare(b.name[language] ?? '')
-    );
-  }
+    const list = POIS.filter((p) => {
+      const matchCat = exploreCategory === 'Tất cả' || p.category === exploreCategory;
+      const nameMatch = p.name[language]?.toLowerCase().includes(q);
+      const addressMatch = p.address?.toLowerCase().includes(q);
+      const matchQ = !q || nameMatch || addressMatch;
+      return matchCat && matchQ;
+    });
+
+    return [...list].sort((a, b) => {
+      if (exploreSort === 'distance') {
+        return (
+          haversineDistance(userLat, userLng, a.lat, a.lng) -
+          haversineDistance(userLat, userLng, b.lat, b.lng)
+        );
+      }
+      return (a.name[language] ?? '').localeCompare(b.name[language] ?? '');
+    });
+  }, [exploreCategory, exploreSearch, exploreSort, language, userLat, userLng]);
+
   const isDownloaded = (poiId: string) => {
     const pkg = `q1-${language}`;
     return downloads[pkg] === 'done';
+  };
+
+  const renderItem = ({ item: poi }: { item: POI }) => {
+    const dist = haversineDistance(userLat, userLng, poi.lat, poi.lng);
+    const downloaded = isDownloaded(poi.id);
+
+    return (
+      <TouchableOpacity
+        onPress={() => openPOI(poi.id)}
+        activeOpacity={0.8}
+        className="w-full flex-row items-start gap-3 p-3 mb-3 bg-white rounded-2xl border border-gray-200"
+      >
+        <View className="w-24 h-28 flex-none overflow-hidden rounded-xl bg-gray-100 relative">
+          <Image source={{ uri: poi.coverImage }} className="w-full h-full" resizeMode="cover" />
+          {downloaded && (
+            <View className="absolute top-1.5 right-1.5 w-5 h-5 bg-teal-500 rounded-full flex items-center justify-center">
+              <IconCheck size={11} color="#ffffff" />
+            </View>
+          )}
+        </View>
+        <View className="flex-1 min-w-0">
+          <View className="flex-row flex-wrap items-center justify-between gap-1.5">
+            <View
+              className="px-2 py-1 rounded-md"
+              style={{ backgroundColor: CATEGORY_COLORS[poi.category] }}
+            >
+              <Text className="text-xs leading-4 font-semibold text-white">{poi.category}</Text>
+            </View>
+            <Text className="text-xs leading-4 text-gray-500 font-medium flex-none">
+              {formatDistance(dist)}
+            </Text>
+          </View>
+          <Text className="text-base leading-[22px] font-bold text-gray-800 mt-2" numberOfLines={2}>
+            {poi.name[language] ?? ''}
+          </Text>
+          {poi.shortDesc?.[language] && (
+            <Text className="text-sm leading-5 text-gray-500 mt-1" numberOfLines={2}>
+              {poi.shortDesc[language]}
+            </Text>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
   };
 
   return (
@@ -67,7 +115,6 @@ export default function ExploreScreen() {
           <View className="flex-row items-center gap-1 rounded-xl bg-gray-100 p-1">
             {(['distance', 'name'] as const).map((s) => {
               const selected = exploreSort === s;
-
               return (
                 <TouchableOpacity
                   key={s}
@@ -109,7 +156,6 @@ export default function ExploreScreen() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          className="flex-none"
           contentContainerStyle={{ gap: 8, paddingBottom: 14 }}
         >
           {CATEGORIES.map((cat) => {
@@ -125,7 +171,9 @@ export default function ExploreScreen() {
                 }}
               >
                 <Text
-                  className={`text-[15px] leading-5 font-semibold ${active ? 'text-white' : 'text-gray-600'}`}
+                  className={`text-[15px] leading-5 font-semibold ${
+                    active ? 'text-white' : 'text-gray-600'
+                  }`}
                 >
                   {cat}
                 </Text>
@@ -135,9 +183,12 @@ export default function ExploreScreen() {
         </ScrollView>
       </View>
 
-      {/* List */}
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: 16, paddingBottom: 24 }}>
-        {filtered.length === 0 ? (
+      <FlatList
+        data={filteredPOIs}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
+        ListEmptyComponent={
           <View className="flex flex-col items-center justify-center px-4 py-16">
             <Text className="text-4xl mb-3">🔍</Text>
             <Text className="text-base text-center text-gray-700 font-semibold">
@@ -156,63 +207,8 @@ export default function ExploreScreen() {
               <Text className="text-teal-600 text-sm font-semibold">Xóa bộ lọc</Text>
             </TouchableOpacity>
           </View>
-        ) : (
-          <View className="gap-3">
-            {filtered.map((poi) => {
-              const dist = haversineDistance(userLat, userLng, poi.lat, poi.lng);
-              const downloaded = isDownloaded(poi.id);
-
-              return (
-                <TouchableOpacity
-                  key={poi.id}
-                  onPress={() => openPOI(poi.id)}
-                  activeOpacity={0.8}
-                  className="w-full flex-row items-start gap-3 p-3 bg-white rounded-2xl border border-gray-200"
-                >
-                  <View className="w-24 h-28 flex-none overflow-hidden rounded-xl bg-gray-100 relative">
-                    <Image
-                      source={{ uri: poi.coverImage }}
-                      className="w-full h-full"
-                      resizeMode="cover"
-                    />
-                    {downloaded && (
-                      <View className="absolute top-1.5 right-1.5 w-5 h-5 bg-teal-500 rounded-full flex items-center justify-center">
-                        <IconCheck size={11} color="#ffffff" />
-                      </View>
-                    )}
-                  </View>
-                  <View className="flex-1 min-w-0">
-                    <View className="flex-row flex-wrap items-center justify-between gap-1.5">
-                      <View
-                        className="px-2 py-1 rounded-md"
-                        style={{ backgroundColor: CATEGORY_COLORS[poi.category] }}
-                      >
-                        <Text className="text-xs leading-4 font-semibold text-white">
-                          {poi.category}
-                        </Text>
-                      </View>
-                      <Text className="text-xs leading-4 text-gray-500 font-medium flex-none">
-                        {formatDistance(dist)}
-                      </Text>
-                    </View>
-                    <Text
-                      className="text-base leading-[22px] font-bold text-gray-800 mt-2"
-                      numberOfLines={2}
-                    >
-                      {poi.name[language]}
-                    </Text>
-                    {poi.shortDesc[language] && (
-                      <Text className="text-sm leading-5 text-gray-500 mt-1" numberOfLines={2}>
-                        {poi.shortDesc[language]}
-                      </Text>
-                    )}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
-      </ScrollView>
+        }
+      />
     </View>
   );
 }

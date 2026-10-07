@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Alert, Image, Linking, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { CATEGORY_COLORS, formatDistance, haversineDistance, POIS } from '@/data/pois';
 import { useApp } from '@/store/AppContext';
 
@@ -23,6 +25,8 @@ interface Props {
 }
 
 export default function POIDetailScreen({ poiId, onBack }: Props) {
+  const insets = useSafeAreaInsets();
+
   const {
     language,
     userLat,
@@ -42,9 +46,14 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
 
   const poi = POIS.find((item) => item.id === poiId);
 
+  const safeTop = Math.max(insets.top, 16) + 8;
+
   if (!poi) {
     return (
-      <View className="flex-1 items-center justify-center bg-white px-4">
+      <View
+        className="absolute inset-0 z-50 flex-1 items-center justify-center bg-white px-4"
+        style={{ paddingTop: insets.top }}
+      >
         <Text className="text-gray-700">Không tìm thấy địa điểm: {poiId}</Text>
 
         <TouchableOpacity onPress={onBack} className="mt-4 p-3">
@@ -109,8 +118,7 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
 
   return (
     <View className="absolute inset-0 z-50 flex-col overflow-hidden bg-slate-50">
-      {/* Ảnh địa điểm */}
-      <View className="relative h-60 shrink-0 bg-gray-200">
+      <View className="relative h-72 shrink-0 bg-gray-200">
         <Image
           source={{ uri: poi.coverImage }}
           accessibilityLabel={name}
@@ -118,24 +126,22 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
           className="h-full w-full"
         />
 
-        {/* Lớp phủ giúp chữ dễ đọc */}
         <View className="absolute inset-0 bg-black/30" />
 
-        {/* Nút quay lại */}
         <TouchableOpacity
           onPress={onBack}
           accessibilityRole="button"
           accessibilityLabel="Quay lại"
           activeOpacity={0.7}
-          className="absolute left-4 top-4 h-10 w-10 items-center justify-center rounded-full bg-black/40"
+          className="absolute left-4 h-10 w-10 items-center justify-center rounded-full bg-black/50"
+          style={{ top: safeTop }}
         >
           <IconBack size={20} color="#FFFFFF" />
         </TouchableOpacity>
 
-        {/* Loại địa điểm */}
         <View
-          className="absolute right-4 top-4 rounded-full px-3 py-1"
-          style={{ backgroundColor: categoryColor }}
+          className="absolute right-4 rounded-full px-3 py-1.5"
+          style={{ backgroundColor: categoryColor, top: safeTop }}
         >
           <Text className="text-xs font-semibold text-white">{poi.category}</Text>
         </View>
@@ -156,13 +162,11 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
         </View>
       </View>
 
-      {/* Nội dung cuộn */}
       <ScrollView
         className="flex-1"
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 24 }}
+        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 24) + 16 }}
       >
-        {/* Khoảng cách và thao tác */}
         <View className="border-b border-gray-100 bg-white px-4 py-3">
           <Text className="text-sm font-semibold text-orange-500">
             {formatDistance(distance)} từ bạn
