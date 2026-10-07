@@ -3,6 +3,7 @@ import { AppProvider, useApp } from '@/store/AppContext';
 import React from 'react';
 import { StatusBar, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import ExploreScreen from '@/screen/ExploreScreen';
 
 function AppShell() {
   const { activeTab } = useApp();
@@ -14,7 +15,9 @@ function AppShell() {
       <View className="flex-1 w-full relative">
         <View className={`absolute inset-0 ${activeTab === 'home' ? 'flex' : 'hidden'}`} />
 
-        <View className={`absolute inset-0 ${activeTab === 'explore' ? 'flex' : 'hidden'}`} />
+        <View className={`absolute inset-0 ${activeTab === 'explore' ? 'flex' : 'hidden'}`}>
+          <ExploreScreen />
+        </View>
 
         <View className={`absolute inset-0 ${activeTab === 'scan' ? 'flex' : 'hidden'}`} />
 
