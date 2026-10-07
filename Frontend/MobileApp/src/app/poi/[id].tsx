@@ -18,7 +18,7 @@ export default function POIDetailRoute() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f8fafc' }}>
+    <SafeAreaView className="flex-1 bg-slate-50">
       <POIDetailScreen key={`${id}:${language}`} poiId={id} onBack={handleBack} />
     </SafeAreaView>
   );
