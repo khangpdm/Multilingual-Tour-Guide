@@ -1,13 +1,13 @@
-import { IconClose, IconSearch, IconCheck } from '@/components/Icons';
+import { IconCheck, IconClose, IconSearch } from '@/components/Icons';
 import {
-  POIS,
-  haversineDistance,
-  formatDistance,
   CATEGORY_COLORS,
+  POIS,
+  formatDistance,
+  haversineDistance,
   type Category,
 } from '@/data/pois';
 import { useApp } from '@/store/AppContext';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Image } from 'react-native';
+import { Image, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 const CATEGORIES = [
   'Tất cả',
@@ -140,7 +140,9 @@ export default function ExploreScreen() {
         {filtered.length === 0 ? (
           <View className="flex flex-col items-center justify-center px-4 py-16">
             <Text className="text-4xl mb-3">🔍</Text>
-            <Text className="text-base text-center text-gray-700 font-semibold">Không tìm thấy địa điểm nào</Text>
+            <Text className="text-base text-center text-gray-700 font-semibold">
+              Không tìm thấy địa điểm nào
+            </Text>
             <Text className="text-gray-500 text-sm leading-5 text-center mt-2">
               Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm
             </Text>
