@@ -1,4 +1,5 @@
 import BottomNav from '@/components/BottomNav';
+import SettingsScreen from '@/screen/SettingsScreen';
 import { AppProvider, useApp } from '@/store/AppContext';
 import React from 'react';
 import { StatusBar, View } from 'react-native';
@@ -20,7 +21,9 @@ function AppShell() {
 
         <View className={`absolute inset-0 ${activeTab === 'download' ? 'flex' : 'hidden'}`} />
 
-        <View className={`absolute inset-0 ${activeTab === 'settings' ? 'flex' : 'hidden'}`} />
+        <View className={`absolute inset-0 ${activeTab === 'settings' ? 'flex' : 'hidden'}`}>
+          <SettingsScreen />
+        </View>
       </View>
       <BottomNav />
     </SafeAreaView>
