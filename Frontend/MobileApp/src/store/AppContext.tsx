@@ -5,7 +5,6 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { Alert } from 'react-native';
 
 export type Tab = 'home' | 'explore' | 'scan' | 'download' | 'settings';
-export type DownloadStatus = 'none' | 'downloading' | 'done' | 'failed';
 
 interface AppContextValue {
   //Navigation
@@ -29,9 +28,6 @@ interface AppContextValue {
   setExploreCategory: (c: string) => void;
   exploreSort: 'distance' | 'name';
   setExploreSort: (s: 'distance' | 'name') => void;
-
-  //Download Screen
-  downloads: Record<string, DownloadStatus>;
 
   //Audio Player
   startPlayback: (poiId: string) => Promise<void>;
@@ -294,7 +290,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setExploreCategory,
         exploreSort,
         setExploreSort,
-        downloads,
         userLat,
         userLng,
         openPOI,
