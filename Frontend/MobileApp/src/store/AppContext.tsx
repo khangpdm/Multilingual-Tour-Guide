@@ -22,7 +22,7 @@ interface AppContextValue {
   openPOI: (id: string) => void;
   closePOI: () => void;
 
-  // Search & Filter (Tìm kiếm & Bộ lọc)
+  // Search & Filter
   homeSearch: string;
   setHomeSearch: (q: string) => void;
   selectedCategory: string;
@@ -70,7 +70,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [demoLocation, setDemoLocationState] = useState<DemoLocation>('near');
   const [activationRadius, setActivationRadius] = useState(1000); // Mặc định 1000m
 
-  // Mặc định lấy tọa độ từ DEMO_USER_LOCATIONS['near']
   const initialLocation = DEMO_USER_LOCATIONS?.near || { lat: 10.7769, lng: 106.7009 };
   const [userLat, setUserLat] = useState<number>(initialLocation.lat);
   const [userLng, setUserLng] = useState<number>(initialLocation.lng);
@@ -78,7 +77,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Cập nhật vị trí GPS thực từ Mapbox UserLocation
   const setDemoLocation = (mode: DemoLocation) => {
     setDemoLocationState(mode);
-    setIsDemoMode(true); // Tự động bật chế độ Demo khi người dùng chọn Gần / Xa
+    setIsDemoMode(true);
 
     if (DEMO_USER_LOCATIONS?.[mode]) {
       setUserLat(DEMO_USER_LOCATIONS[mode].lat);
@@ -87,7 +86,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const setUserLocation = (lat: number, lng: number) => {
-    // Chỉ cập nhật tọa độ thực từ Mapbox nếu KHÔNG ở trong Demo Mode
     if (!isDemoMode) {
       setUserLat(lat);
       setUserLng(lng);
@@ -109,7 +107,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const startPlayback = (poiId: string) => {
     setPlayingPOIId(poiId);
     setIsPlaying(true);
-    // Bạn có thể gắn logic expo-speech hoặc audio player tại đây
   };
 
   const stopPlayback = () => {
