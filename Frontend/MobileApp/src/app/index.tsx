@@ -1,4 +1,5 @@
 import BottomNav from '@/components/BottomNav';
+import DownloadScreen from '@/screen/DownloadScreen';
 import SettingsScreen from '@/screen/SettingsScreen';
 import { AppProvider, useApp } from '@/store/AppContext';
 import React from 'react';
@@ -19,7 +20,9 @@ function AppShell() {
 
         <View className={`absolute inset-0 ${activeTab === 'scan' ? 'flex' : 'hidden'}`} />
 
-        <View className={`absolute inset-0 ${activeTab === 'download' ? 'flex' : 'hidden'}`} />
+        <View className={`absolute inset-0 ${activeTab === 'download' ? 'flex' : 'hidden'}`}>
+          <DownloadScreen />
+        </View>
 
         <View className={`absolute inset-0 ${activeTab === 'settings' ? 'flex' : 'hidden'}`}>
           <SettingsScreen />
