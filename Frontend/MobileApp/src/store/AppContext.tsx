@@ -4,8 +4,11 @@ import * as Speech from 'expo-speech';
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 
+export type { Language };
 export type Tab = 'home' | 'explore' | 'scan' | 'download' | 'settings';
 export type DownloadStatus = 'none' | 'downloading' | 'done' | 'failed';
+export type LocationMode = 'battery' | 'balanced' | 'accuracy';
+export type VoiceId = 'an' | 'hoai-my' | 'nam-minh';
 
 interface AppContextValue {
   //Navigation
@@ -21,6 +24,17 @@ interface AppContextValue {
 
   //Language
   language: Language;
+  setLanguage: (language: Language) => void;
+  autoPlay: boolean;
+  setAutoPlay: (enabled: boolean) => void;
+  triggerRadius: number;
+  setTriggerRadius: (radius: number) => void;
+  locationMode: LocationMode;
+  setLocationMode: (mode: LocationMode) => void;
+  wifiOnly: boolean;
+  setWifiOnly: (enabled: boolean) => void;
+  voice: VoiceId;
+  setVoice: (voice: VoiceId) => void;
 
   //Explore Screen
   exploreSearch: string;
@@ -64,7 +78,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [downloads] = useState<Record<string, DownloadStatus>>({});
   const userLat = DEMO_USER_LOCATIONS.near.lat;
   const userLng = DEMO_USER_LOCATIONS.near.lng;
-  const language: Language = 'vi';
+  const [language, setLanguage] = useState<Language>('vi');
+  const [autoPlay, setAutoPlay] = useState(true);
+  const [triggerRadius, setTriggerRadius] = useState(100);
+  const [locationMode, setLocationMode] = useState<LocationMode>('balanced');
+  const [wifiOnly, setWifiOnly] = useState(true);
+  const [voice, setVoice] = useState<VoiceId>('hoai-my');
   const [activePOIId, setActivePOIId] = useState<string | null>(null);
 
   const openPOI = (id: string) => {
@@ -300,6 +319,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         userLng,
         openPOI,
         language,
+        setLanguage,
+        autoPlay,
+        setAutoPlay,
+        triggerRadius,
+        setTriggerRadius,
+        locationMode,
+        setLocationMode,
+        wifiOnly,
+        setWifiOnly,
+        voice,
+        setVoice,
         activePOIId,
         closePOI,
         showMiniPlayer,

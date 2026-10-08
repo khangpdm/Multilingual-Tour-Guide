@@ -1,9 +1,10 @@
 import BottomNav from '@/components/BottomNav';
+import ExploreScreen from '@/screen/ExploreScreen';
+import SettingsScreen from '@/screen/Setting/SettingsScreen';
 import { AppProvider, useApp } from '@/store/AppContext';
 import React from 'react';
 import { StatusBar, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import ExploreScreen from '@/screen/ExploreScreen';
 
 function AppShell() {
   const { activeTab } = useApp();
@@ -23,7 +24,9 @@ function AppShell() {
 
         <View className={`absolute inset-0 ${activeTab === 'download' ? 'flex' : 'hidden'}`} />
 
-        <View className={`absolute inset-0 ${activeTab === 'settings' ? 'flex' : 'hidden'}`} />
+        <View className={`absolute inset-0 ${activeTab === 'settings' ? 'flex' : 'hidden'}`}>
+          <SettingsScreen />
+        </View>
       </View>
       <BottomNav />
     </SafeAreaView>
