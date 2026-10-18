@@ -1,6 +1,7 @@
 import BottomNav from '@/components/BottomNav';
+import DownloadScreen from '@/screen/DownloadScreen/DownloadScreen';
+import ExploreScreen from '@/screen/ExploreScreen/ExploreScreen';
 import HomeScreen from '@/screen/HomeScreen/HomeScreen';
-import ExploreScreen from '@/screen/ExploreScreen';
 import SettingsScreen from '@/screen/Setting/SettingsScreen';
 import { AppProvider, useApp } from '@/store/AppContext';
 import React from 'react';
@@ -25,7 +26,9 @@ function AppShell() {
 
         <View className={`absolute inset-0 ${activeTab === 'scan' ? 'flex' : 'hidden'}`} />
 
-        <View className={`absolute inset-0 ${activeTab === 'download' ? 'flex' : 'hidden'}`} />
+        <View className={`absolute inset-0 ${activeTab === 'download' ? 'flex' : 'hidden'}`}>
+          <DownloadScreen />
+        </View>
 
         <View className={`absolute inset-0 ${activeTab === 'settings' ? 'flex' : 'hidden'}`}>
           <SettingsScreen />
@@ -39,9 +42,7 @@ function AppShell() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AppProvider>
-        <AppShell />
-      </AppProvider>
+      <AppShell />
     </SafeAreaProvider>
   );
 }

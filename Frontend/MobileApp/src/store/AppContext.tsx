@@ -49,6 +49,10 @@ interface AppContextValue {
   setDemoLocation: (m: DemoLocation) => void;
   isDemoMode: boolean;
   setIsDemoMode: (v: boolean) => void;
+  hasFollowed: boolean;
+  setHasFollowed: React.Dispatch<React.SetStateAction<boolean>>;
+  userCoordinates: [number, number] | null;
+  setUserCoordinates: React.Dispatch<React.SetStateAction<[number, number] | null>>;
 
   // Explore Screen
   exploreSearch: string;
@@ -111,6 +115,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [downloads] = useState<Record<string, DownloadStatus>>({});
 
   // User location / Geofencing
+  const [hasFollowed, setHasFollowed] = useState(false);
+  const [userCoordinates, setUserCoordinates] = useState<[number, number] | null>(null);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [demoLocation, setDemoLocationState] = useState<DemoLocation>('near');
   const [activationRadius, setActivationRadius] = useState(1000); // Mặc định 1000m
@@ -395,6 +401,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setVoice,
 
         // Geofence / Demo
+        hasFollowed,
+        setHasFollowed,
+        userCoordinates,
+        setUserCoordinates,
         activationRadius,
         setActivationRadius,
         demoLocation,

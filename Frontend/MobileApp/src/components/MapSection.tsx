@@ -12,7 +12,7 @@ import Mapbox, {
   UserLocation,
 } from '@rnmapbox/maps';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import pin from '../../assets/images/pin.png';
 import { IconTarget } from './Icons';
@@ -44,10 +44,11 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
     selectedCategory,
     setSelectedCategory,
     setUserLocation,
+    hasFollowed,
+    setHasFollowed,
+    userCoordinates,
+    setUserCoordinates,
   } = useApp();
-
-  const [hasFollowed, setHasFollowed] = useState(false);
-  const [userCoordinates, setUserCoordinates] = useState<[number, number] | null>(null);
 
   useEffect(() => {
     Mapbox.requestAndroidLocationPermissions();
@@ -148,7 +149,11 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
           onMapTouch?.();
         }}
       >
-        <Camera ref={cameraRef} zoomLevel={14} />
+        <Camera
+          ref={cameraRef}
+          zoomLevel={14}
+          {...(userCoordinates ? { centerCoordinate: userCoordinates } : {})}
+        />
         <UserLocation onUpdate={handleUserLocationUpdate} />
         <LocationPuck puckBearingEnabled puckBearing="heading" pulsing={{ isEnabled: true }} />
 
