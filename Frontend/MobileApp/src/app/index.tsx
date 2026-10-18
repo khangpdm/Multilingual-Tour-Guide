@@ -1,5 +1,7 @@
 import BottomNav from '@/components/BottomNav';
-import ExploreScreen from '@/screen/ExploreScreen';
+import DownloadScreen from '@/screen/DownloadScreen/DownloadScreen';
+import ExploreScreen from '@/screen/ExploreScreen/ExploreScreen';
+import HomeScreen from '@/screen/HomeScreen/HomeScreen';
 import SettingsScreen from '@/screen/Setting/SettingsScreen';
 import { AppProvider, useApp } from '@/store/AppContext';
 import React from 'react';
@@ -14,7 +16,9 @@ function AppShell() {
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       <View className="flex-1 w-full relative">
-        <View className={`absolute inset-0 ${activeTab === 'home' ? 'flex' : 'hidden'}`} />
+        <View className={`absolute inset-0 ${activeTab === 'home' ? 'flex' : 'hidden'}`}>
+          <HomeScreen />
+        </View>
 
         <View className={`absolute inset-0 ${activeTab === 'explore' ? 'flex' : 'hidden'}`}>
           <ExploreScreen />
@@ -22,7 +26,9 @@ function AppShell() {
 
         <View className={`absolute inset-0 ${activeTab === 'scan' ? 'flex' : 'hidden'}`} />
 
-        <View className={`absolute inset-0 ${activeTab === 'download' ? 'flex' : 'hidden'}`} />
+        <View className={`absolute inset-0 ${activeTab === 'download' ? 'flex' : 'hidden'}`}>
+          <DownloadScreen />
+        </View>
 
         <View className={`absolute inset-0 ${activeTab === 'settings' ? 'flex' : 'hidden'}`}>
           <SettingsScreen />
@@ -36,9 +42,7 @@ function AppShell() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AppProvider>
-        <AppShell />
-      </AppProvider>
+      <AppShell />
     </SafeAreaProvider>
   );
 }

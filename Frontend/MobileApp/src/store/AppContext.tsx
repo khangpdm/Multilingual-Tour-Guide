@@ -9,22 +9,28 @@ export type Tab = 'home' | 'explore' | 'scan' | 'download' | 'settings';
 export type DownloadStatus = 'none' | 'downloading' | 'done' | 'failed';
 export type LocationMode = 'battery' | 'balanced' | 'accuracy';
 export type VoiceId = 'an' | 'hoai-my' | 'nam-minh';
+export type DemoLocation = 'near' | 'far';
 
 interface AppContextValue {
-  //Navigation
+  // Navigation
   activeTab: Tab;
   setActiveTab: (tab: Tab) => void;
   openPOI: (id: string) => void;
   closePOI: () => void;
   activePOIId: string | null;
 
-  //Map
+  // Map
   userLat: number;
   userLng: number;
+  setUserLocation: (lat: number, lng: number) => void;
+  selectedMapPOIId: string | null;
+  setSelectedMapPOIId: (id: string | null) => void;
 
-  //Language
+  // Language
   language: Language;
   setLanguage: (language: Language) => void;
+  langMenuOpen: boolean;
+  setLangMenuOpen: (open: boolean) => void;
   autoPlay: boolean;
   setAutoPlay: (enabled: boolean) => void;
   triggerRadius: number;
@@ -36,7 +42,19 @@ interface AppContextValue {
   voice: VoiceId;
   setVoice: (voice: VoiceId) => void;
 
-  //Explore Screen
+  // Geofence / Demo
+  activationRadius: number;
+  setActivationRadius: (r: number) => void;
+  demoLocation: DemoLocation;
+  setDemoLocation: (m: DemoLocation) => void;
+  isDemoMode: boolean;
+  setIsDemoMode: (v: boolean) => void;
+  hasFollowed: boolean;
+  setHasFollowed: React.Dispatch<React.SetStateAction<boolean>>;
+  userCoordinates: [number, number] | null;
+  setUserCoordinates: React.Dispatch<React.SetStateAction<[number, number] | null>>;
+
+  // Explore Screen
   exploreSearch: string;
   setExploreSearch: (q: string) => void;
   exploreCategory: string;
@@ -44,10 +62,16 @@ interface AppContextValue {
   exploreSort: 'distance' | 'name';
   setExploreSort: (s: 'distance' | 'name') => void;
 
-  //Download Screen
+  // Home Search
+  homeSearch: string;
+  setHomeSearch: (q: string) => void;
+  selectedCategory: string;
+  setSelectedCategory: (category: string) => void;
+
+  // Download Screen
   downloads: Record<string, DownloadStatus>;
 
-  //Audio Player
+  // Audio Player
   startPlayback: (poiId: string) => Promise<void>;
   togglePlayback: () => Promise<void>;
   stopPlayback: () => Promise<void>;
@@ -63,42 +87,81 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-export function useApp() {
-  const ctx = useContext(AppContext);
-  if (!ctx) throw new Error('useApp must be used within AppProvider');
-  return ctx;
-}
-
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+
+  // Navigation
   const [activeTab, setActiveTab] = useState<Tab>('home');
+
+  // Language
+  const [language, setLanguage] = useState<Language>('vi');
+  const [langMenuOpen, setLangMenuOpen] = useState(false);
+  const [autoPlay, setAutoPlay] = useState(true);
+  const [wifiOnly, setWifiOnly] = useState(true);
+  const [voice, setVoice] = useState<VoiceId>('hoai-my');
+
+  // POI selection
+  const [selectedMapPOIId, setSelectedMapPOIId] = useState<string | null>(null);
+  const [activePOIId, setActivePOIId] = useState<string | null>(null);
+
+  // Search & Filter
+  const [homeSearch, setHomeSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('Tất cả');
   const [exploreSearch, setExploreSearch] = useState('');
   const [exploreCategory, setExploreCategory] = useState('Tất cả');
   const [exploreSort, setExploreSort] = useState<'distance' | 'name'>('distance');
+
+  // Downloads
   const [downloads] = useState<Record<string, DownloadStatus>>({});
-  const userLat = DEMO_USER_LOCATIONS.near.lat;
-  const userLng = DEMO_USER_LOCATIONS.near.lng;
-  const [language, setLanguage] = useState<Language>('vi');
-  const [autoPlay, setAutoPlay] = useState(true);
+
+  // User location / Geofencing
+  const [hasFollowed, setHasFollowed] = useState(false);
+  const [userCoordinates, setUserCoordinates] = useState<[number, number] | null>(null);
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [demoLocation, setDemoLocationState] = useState<DemoLocation>('near');
+  const [activationRadius, setActivationRadius] = useState(1000); // Mặc định 1000m
   const [triggerRadius, setTriggerRadius] = useState(100);
   const [locationMode, setLocationMode] = useState<LocationMode>('balanced');
-  const [wifiOnly, setWifiOnly] = useState(true);
-  const [voice, setVoice] = useState<VoiceId>('hoai-my');
-  const [activePOIId, setActivePOIId] = useState<string | null>(null);
+
+  const initialLocation = DEMO_USER_LOCATIONS?.near || { lat: 10.7769, lng: 106.7009 };
+  const [userLat, setUserLat] = useState<number>(initialLocation.lat);
+  const [userLng, setUserLng] = useState<number>(initialLocation.lng);
+
+  // Cập nhật vị trí GPS thực từ Mapbox UserLocation
+  const setDemoLocation = (mode: DemoLocation) => {
+    setDemoLocationState(mode);
+    setIsDemoMode(true);
+
+    if (DEMO_USER_LOCATIONS?.[mode]) {
+      setUserLat(DEMO_USER_LOCATIONS[mode].lat);
+      setUserLng(DEMO_USER_LOCATIONS[mode].lng);
+    }
+  };
+
+  const setUserLocation = (lat: number, lng: number) => {
+    if (!isDemoMode) {
+      setUserLat(lat);
+      setUserLng(lng);
+    }
+  };
 
   const openPOI = (id: string) => {
+    setActivePOIId(id);
     router.push({
       pathname: '/poi/[id]',
       params: { id },
     });
   };
+
   const [showMiniPlayer, setShowMiniPlayer] = useState(false);
+
   const closePOI = () => {
     setActivePOIId(null);
     if (isPlaying || playingPOIId) {
       setShowMiniPlayer(true);
     }
   };
+
   const [selectedVoice, setSelectedVoice] = useState('');
 
   // Nội dung đang đọc.
@@ -148,11 +211,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
         if (session !== speechSessionRef.current) return;
 
-        const voice = voices.find(
+        const foundVoice = voices.find(
           (item) => item.identifier === selectedVoice || item.name === selectedVoice
         );
 
-        voiceIdentifier = voice?.identifier;
+        voiceIdentifier = foundVoice?.identifier;
       }
 
       Speech.speak(remainingText, {
@@ -303,23 +366,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [playerProgress, setPlayerProgress] = useState(0);
   const [speechRate, setSpeechRate] = useState(1.0);
   const [isPlaying, setIsPlaying] = useState(false);
+
   return (
     <AppContext.Provider
       value={{
+        // Navigation
         activeTab,
         setActiveTab,
-        exploreSearch,
-        setExploreSearch,
-        exploreCategory,
-        setExploreCategory,
-        exploreSort,
-        setExploreSort,
-        downloads,
+        openPOI,
+        closePOI,
+        activePOIId,
+
+        // Map
         userLat,
         userLng,
-        openPOI,
+        setUserLocation,
+        selectedMapPOIId,
+        setSelectedMapPOIId,
+
+        // Language & Settings
         language,
         setLanguage,
+        langMenuOpen,
+        setLangMenuOpen,
         autoPlay,
         setAutoPlay,
         triggerRadius,
@@ -330,9 +399,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setWifiOnly,
         voice,
         setVoice,
-        activePOIId,
-        closePOI,
-        showMiniPlayer,
+
+        // Geofence / Demo
+        hasFollowed,
+        setHasFollowed,
+        userCoordinates,
+        setUserCoordinates,
+        activationRadius,
+        setActivationRadius,
+        demoLocation,
+        setDemoLocation,
+        isDemoMode,
+        setIsDemoMode,
+
+        // Explore
+        exploreSearch,
+        setExploreSearch,
+        exploreCategory,
+        setExploreCategory,
+        exploreSort,
+        setExploreSort,
+
+        // Home Search
+        homeSearch,
+        setHomeSearch,
+        selectedCategory,
+        setSelectedCategory,
+
+        // Downloads
+        downloads,
+
+        // Audio Player
         startPlayback,
         togglePlayback,
         stopPlayback,
@@ -341,6 +438,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         playerProgress,
         speechRate,
         setSpeechRate,
+        showMiniPlayer,
         selectedVoice,
         setSelectedVoice,
       }}
@@ -348,4 +446,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       {children}
     </AppContext.Provider>
   );
+}
+
+export function useApp() {
+  const ctx = useContext(AppContext);
+  if (!ctx) throw new Error('useApp must be used within AppProvider');
+  return ctx;
 }

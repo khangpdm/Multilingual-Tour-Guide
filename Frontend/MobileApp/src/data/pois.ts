@@ -364,8 +364,8 @@ export const POIS: POI[] = [
 ];
 
 export const DEMO_USER_LOCATIONS = {
-  near: { lat: 10.772, lng: 106.6975 },
-  far: { lat: 10.781, lng: 106.694 },
+  near: { lat: 10.772, lng: 106.6975, label: 'Gần Chợ Bến Thành' },
+  far: { lat: 10.781, lng: 106.694, label: 'Xa tất cả các địa điểm' },
 };
 
 export function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {

@@ -7,7 +7,7 @@ import { useApp } from '@/store/AppContext';
 export default function POIDetailRoute() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { language } = useApp();
+  const { language, activeTab, setActiveTab } = useApp();
 
   const handleBack = () => {
     if (router.canGoBack()) {
