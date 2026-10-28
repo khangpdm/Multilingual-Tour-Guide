@@ -12,7 +12,7 @@ async def health_check():
     return {
         "status": "ok",
         "server_time": now.isoformat(
-            timespace='seconds'
+            timespec='seconds'
         ).replace("+00:00", "Z"),
         "version": os.getenv("APP_VERSION", "1.4.2"),
     }

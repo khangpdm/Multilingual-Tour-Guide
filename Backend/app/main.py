@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from db.mongo import lifespan
 from api.routes.health import router as health_router
 from api.routes.languages import router as languages_router
+from api.routes.pois import router as pois_router
 
 app = FastAPI(
     title="Tourism API",
@@ -12,6 +13,7 @@ app = FastAPI(
 
 app.include_router(health_router)
 app.include_router(languages_router)
+app.include_router(pois_router)
 
 @app.get("/")
 async def root():
