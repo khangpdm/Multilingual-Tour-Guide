@@ -40,6 +40,7 @@ def public_poi(document: dict, active_languages: set[str],
 
         content[lang] = {
             "name": value.get("name", ""),
+            "address": value.get("address", ""),
             "text": value.get("text", ""),
             "audio_url": value.get("audio_url"),
             "audio_sha256": value.get("audio_sha256"),
@@ -134,3 +135,153 @@ async def load_all_pois(
             status_code=503,
             detail="MongoDB hiện không khả dụng",
         )
+
+@router.get("/hotset")
+async def get_hotset(
+    request: Request,
+    lat: float = Query(..., ge=-90, le= 90),
+    lng: float = Query(..., ge=-180, le=180),
+    radius_km: float = Query(default=1.5, ge=0.1, le=5),
+    limit: int = Query(default=10, ge=1, le=20),
+    lang: str = Query(default="vi"),
+):
+    db = request.app.state.db
+
+    try:
+        active_languages = await get_active_languages(db)
+        if lang not in active_languages:
+            raise HTTPException(
+                status_code=422,
+                detail="Ngôn ngữ không khả dụng",
+            )
+
+        pipeline = [
+            {
+                "$geoNear": {
+                    "near": {
+                        "type": "Point",
+                        "coordinates": [lng, lat],
+                    },
+                    "key": "location",
+                    "distanceField": "distance_m",
+                    "maxDistance": radius_km * 1000,
+                    "spherical": True,
+                    "query": {"status": "active"},
+                }
+            },
+            {"$limit": limit},
+            {
+                "$project": {
+                    "_id": 1,
+                    "poi_id": 1,
+                    "content": 1,
+                    "distance_m": 1,
+                }
+            },
+        ]
+
+        documents = await db["pois"].aggregate(pipeline).to_list(length=limit)
+
+        results = []
+        for document in documents:
+            content = document.get("content", {}).get(lang, {})
+            audio_url = content.get("audio_url")
+            results.append({
+                "poi_id": document.get("poi_id", document.get("_id")),
+                "distance_m": round(document.get("distance_m", 0), 2),
+                "audio_ready": audio_url is not None,
+                "audio_url": audio_url,
+                "audio_sha256": content.get("audio_sha256"),
+            })
+
+        return {"hotset_pois": results}
+
+    except PyMongoError:
+        raise HTTPException(
+            status_code=503,
+            detail="Không thể truy vấn vị trí POI",
+        )
+
+@router.get("/{poi_id}")
+async def get_poi_detail(
+    poi_id: str,
+    request: Request,
+    lang: str = Query(default="vi"),
+    qr_code: Optional[str] = None,
+):
+    db = request.app.state.db
+
+    try:
+        active_languages = await get_active_languages(db)
+        if lang not in active_languages:
+            raise HTTPException(
+                status_code=422,
+                detail="Ngôn ngữ chưa được bật",
+            )
+
+        if qr_code is not None:
+            document = await find_active_poi(
+                db, "qr_code", qr_code
+            )
+            trigger_source = "qr_scan"
+        else:
+            document = await db["pois"].find_one({
+                "$and": [
+                    {"status": "active"},
+                    {
+                        "$or": [
+                            {"_id": poi_id},
+                            {"poi_id": poi_id},
+                        ]
+                    },
+                ]
+            })
+            trigger_source = "manual_tap"
+
+        if not document:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": "QR_NOT_FOUND" if qr_code else "POI_NOT_FOUND",
+                    "message": "Không tìm thấy địa điểm",
+                },
+            )
+
+        poi = public_poi(document, active_languages)
+        content = poi["content"].get(lang, {})
+        audio_url = content.get("audio_url")
+        tiers = ["tier3_local_tts"]
+        if audio_url:
+            tiers.insert(0, "tier1_pregen")
+
+        result = {
+            "poi": poi,
+            "audio_url": audio_url,
+            "trigger_source": trigger_source,
+        }
+
+        if qr_code is not None:
+            result["poi_id"] = poi["poi_id"]
+            result["name"] = content.get("name", "")
+
+        return result
+
+    except PyMongoError:
+        raise HTTPException(
+            status_code=503,
+            detail="MongoDB hiện không khả dụng",
+        )
+
+@router.get("/by-qr/{qr_code}")
+async def get_poi_by_qr(
+    qr_code: str,
+    request: Request,
+    lang: str = Query(default="vi"),
+):
+    return await get_poi_detail(
+        poi_id=None,
+        request=request,
+        lang=lang,
+        qr_code=qr_code,
+    )
+
