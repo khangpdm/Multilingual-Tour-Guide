@@ -1,0 +1,51 @@
+.admin-demo { background: #e7f4f0; color: #145e63; border: 1px solid #c5dfd5; border-radius: 9px; padding: 10px 14px; margin-bottom: 20px; font-size: 12px; line-height: 1.6; }
+.admin-split { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(280px, 1fr); align-items: start; gap: 20px; }
+.admin-form { display: grid; gap: 18px; }
+.admin-form h2 { margin: 0; }
+.admin-form > .primary-button, .admin-form > .secondary-button { justify-self: start; }
+.admin-form textarea { min-height: 110px; resize: vertical; }
+.admin-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.admin-check { display: flex; align-items: center; gap: 9px; font-size: 13px; }
+.admin-check input, table input[type=checkbox] { width: 17px; height: 17px; accent-color: var(--primary); }
+.admin-block { display: block; margin-top: 5px; color: var(--muted-foreground); line-height: 1.7; }
+.admin-notice { background: #f3f7f5; border-left: 3px solid var(--primary); padding: 12px 15px; line-height: 1.7; font-size: 13px; color: var(--primary-dark); overflow-wrap: anywhere; }
+.admin-error { color: #a23825; background: #fff2ee; padding: 10px; border-radius: 6px; font-size: 12px; }
+.admin-id { overflow-wrap: anywhere; font-size: 12px; }
+.admin-diff { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.audit-entry { border-bottom: 1px solid var(--border); padding: 16px 0; }
+.audit-entry summary { cursor: pointer; font-size: 13px; overflow-wrap: anywhere; }
+.audit-entry summary span, .audit-entry time { margin-left: 14px; color: var(--muted-foreground); font-size: 12px; }
+.audit-entry pre { background: #f3f7f5; padding: 14px; max-height: 350px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }
+.admin-image-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.admin-image-grid figure { margin: 0; min-width: 0; }
+.admin-image-grid img { width: 100%; height: 160px; object-fit: cover; border-radius: 9px; }
+.admin-bounds { display: grid; text-align: center; gap: 16px; padding: 30px 15px; background: repeating-linear-gradient(0deg, #edf5f1, #edf5f1 29px, #dcebe4 30px); border-radius: 12px; font-size: 12px; }
+.admin-bounds > div { display: flex; align-items: center; justify-content: space-around; gap: 12px; }
+.admin-bounds strong { padding: 30px; border: 2px dashed var(--primary); background: #ffffffaa; }
+.admin-bounds small { font-weight: 400; }
+.admin-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
+.admin-scroll { max-height: 520px; overflow: auto; }
+.density-table { min-width: 1000px; }
+.density-table th, .density-table td { padding: 6px; }
+.density-table td span { display: grid; place-items: center; width: 26px; height: 30px; border-radius: 4px; font-size: 10px; }
+.admin-page .panel { min-width: 0; }
+.admin-page .filter-row { align-items: end; flex-wrap: wrap; }
+.admin-page .filter-row .field { min-width: 130px; flex: 1; }
+.admin-page audio { width: 100%; max-width: 480px; }
+.admin-page progress { display: block; width: 100px; accent-color: var(--primary); }
+.admin-page input:focus-visible, .admin-page select:focus-visible, .admin-page textarea:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+.admin-page button:disabled { opacity: .5; cursor: not-allowed; }
+.sidebar .nav-list { overflow-y: auto; min-height: 0; }
+@media (max-width: 1100px) { .admin-split { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .admin-kpis { grid-template-columns: 1fr 1fr; } .admin-diff { grid-template-columns: 1fr; } .admin-image-grid { grid-template-columns: 1fr 1fr; } .audit-entry summary span, .audit-entry time { display: block; margin: 6px 0; } .admin-bounds > div { flex-direction: column; } .admin-page .page-heading { flex-wrap: wrap; gap: 12px; } }
+.crud-dialog-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 20px; background: rgba(18, 44, 43, .32); backdrop-filter: blur(3px); }
+.crud-dialog { width: min(520px, 100%); max-height: min(720px, calc(100vh - 40px)); overflow: auto; padding: 22px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); box-shadow: 0 24px 70px rgba(20, 55, 52, .25); }
+.crud-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.crud-dialog-head h2 { margin: 0; font-size: 18px; }
+.crud-dialog .admin-form { gap: 15px; }
+.crud-dialog .admin-notice { margin: 0; }
+.row-actions { display: flex; align-items: center; gap: 12px; white-space: nowrap; }
+.crud-dialog .detail-list { display: grid; gap: 0; }
+.crud-dialog .detail-list p { display: flex; justify-content: space-between; gap: 18px; margin: 0; padding: 13px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.crud-dialog .detail-list p span { color: var(--muted-foreground); }
+.crud-dialog .detail-list p strong { text-align: right; overflow-wrap: anywhere; }
