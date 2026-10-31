@@ -1,60 +1,92 @@
-# Admin ERD prototype
+# Admin dashboard - API_SPEC integration
 
-Run `npm run dev` from this directory. Build with `npm run build`; type-check with
-`npx tsc --noEmit --incremental false`.
+The dashboard follows `D:/Seminar/md/API_SPEC.md`. That document is the API
+contract; `MONGODB_EXPRESS.md` is a database setup example, not a UI contract.
+In particular, POI status is `published | unpublished | archived`, not `active`.
 
-## Implemented screens
+## Run
 
-- `/`: overview calculated from the shared demo dataset.
-- `/pois`, `/pois/new`, `/pois/:id`: POI fields, language-specific content,
-  image attachments, HTTPS audio preview, QR identifier, and audit history.
-- `/zones`, `/zones/new`, `/zones/:id/edit`: bounding boxes and zoom limits.
-- `/languages`: active/default language and ordering.
-- `/accounts`: email, role, activation status; protects the current demo account.
-- `/roles`: editable capability matrix, immutable Super Admin grants.
-- `/audio-tasks`: filters, retry, cancellation, progress and error details.
-- `/audit-logs`: actor/action/date filters and before/after snapshots.
-- `/analytics`: event filters, CSV export, and hourly visit-density heatmap.
-- `/settings`: default radius for newly created POIs only.
+Run `npm run dev` in this directory. Type-check with
+`node node_modules/typescript/bin/tsc --noEmit --incremental false` and build
+with `npm run build`.
 
-## Data and integration boundaries
+Set `VITE_API_BASE_URL` to the backend origin, or leave it empty when API and
+dashboard share an origin through a reverse proxy. No backend is included in
+this repository. A Vite-only server cannot answer the API requests.
 
-State persists in browser localStorage under `tour-guide.admin.erd.v1`.
-Successful edits and their audit entries are persisted together. If storage fails,
-the operation is rejected and an error is shown. Images are limited to six files
-of 350 KB each; audit snapshots record image sizes rather than copying binary data.
-Do not store real customer information in this prototype.
+Production requires HTTPS and the cookie/CORS setup from the spec:
+HttpOnly, Secure, SameSite=Strict, refresh cookie Path=/auth, credentials allowed
+for the dashboard origin. Prefer same-origin or same-site hosting. Cross-site
+cookies will not work with SameSite=Strict. Never put secrets in VITE variables.
 
-Role switching is a preview control, NOT authentication or a security boundary.
-Permissions are grouped UI capabilities such as `poi.write`; an API adapter must
-map them to backend permission IDs and enforce authorization server-side.
-Role display names must likewise be mapped to `role_id`. Nested POI content must
-be mapped to the separate `POI_CONTENT` records when integrating the backend.
+## Live mode
 
-No email, OTP, password, TTS generation, offline-pack publish, or analytics ingestion
-is performed. Audio jobs remain queued until a real worker is connected. Audio
-checksums require backend verification. QR identifiers can be edited/copied, but
-QR image generation awaits the visitor application's canonical deep-link format.
-Bounding boxes are edited numerically, with a schematic preview, not a map service.
-Analytics use synthetic events and visit counts, not real tourist activity.
-No listening-duration metrics or POI version snapshots are invented from the ERD.
+- Login, refresh, logout and invitation activation call `/auth/*`.
+- Session permissions come from `/admin/me/permissions`; tokens are never
+  written to localStorage. Every mutation still requires backend authorization.
+- POIs support lifecycle transitions, Vietnamese source content, locale edits,
+  MP3 uploads, TTS regeneration options, image upload/removal and server-issued QR.
+- Audio tasks use credentialed SSE snapshots/updates, retry and cancellation.
+- Users are invited, not manually activated. Email is immutable. Role assignment
+  and deactivation enforce the UI's known role levels; the backend is authoritative.
+- Roles expose all 32 permissions in 9 groups and support custom roles.
+- Languages protect Vietnamese; zones may be disabled without disabling POIs.
+- Reports use aggregate analytics endpoints, not raw event-list endpoints.
+  Heatmap renders a coordinate plot (not a tiled street map) and the backend's
+  baseline levels. Report export downloads the server's CSV/XLSX/JSON response.
+- Audit supports date/actor/action/target filters and CSV/JSON export.
+- Phase-2 on-demand TTS and presence screens, OTP/reset-password routes, and a
+  writable global settings screen are intentionally not exposed without APIs.
+- `description` is not sent: it exists only in the setup seed, not PoiContent.
 
-## Manual acceptance checks
+## Demo mode
 
-1. Add a language; reload and verify it persists and appears in POI language choices.
-2. Verify duplicate codes and disabling the default language are rejected.
-3. Edit a POI radius and localized content; save, reopen, and inspect its audit entry.
-4. Reject duplicate QR IDs, out-of-zone coordinates, and missing default-language names.
-5. Reject inverted zone bounds, bounds excluding existing POIs, and disabling a zone
-   with active POIs.
-6. Create an audio task from saved narration. Verify duplicate tasks/retries are
-   rejected; cancel then retry and inspect the audit log.
-7. Change the preview role to POI Manager on `/audit-logs`; verify access is blocked.
-8. Create/edit a demo account; reject duplicate emails and disabling the current actor.
-9. Filter analytics by zone/POI/event/language/source/tier and export the filtered CSV.
-10. Verify density filters use only date, zone and POI, and distinguish missing data
-    from zero visits. Check navigation and form layout at mobile and desktop sizes.
+Select "Kham pha ban demo" on the login page to explicitly enter demo mode.
+It uses a separate `tour-guide.admin.api-spec.v2` localStorage key; the old ERD
+prototype data is not overwritten or migrated. Do not enter real personal data.
+Role switching is available only here. Demo writes and audit entries persist
+together, with no network writes. Email, activation links, binary uploads and
+translation/TTS execution are not simulated as successes. Jobs remain queued.
+Only the content-gap report can be calculated from demo POIs; other reports
+require real telemetry from the backend. Demo IDs are opaque prefixed UUIDs;
+live IDs always come from the server. CSV/JSON demo exports are available;
+XLSX export requires the backend.
 
-The existing stylesheet contains two malformed legacy selectors (`......home-analytics`
-and `...chart-card`) that produce CSS optimizer warnings; they are unrelated to these
-screens and do not prevent a production build.
+## Integration notes and limitations
+
+The initial workspace hydrates authorized lists in API pages of 100, then
+fetches POI detail in batches of eight because the list endpoint returns summaries.
+UI lists paginate/filter the hydrated data. For large deployments, replace this
+with server-driven per-screen pagination and lazy detail loading. Audit filters
+and analytics requests already execute on the server. Audit initially covers
+the API's default 30-day window.
+
+Permissions for dependent lookups should be assigned together: POI editing needs
+`poi.view` to read POIs/zones/languages, and role editing needs `role.view`.
+Users with account-edit rights but no role-view rights can still edit a name;
+the backend remains responsible for validating role changes and protecting the
+last active Super Admin. Custom role levels require the roles lookup.
+
+The spec omits a daily audio-play timeseries endpoint, an admin configuration
+write endpoint, a raw telemetry list, and export IDs for top QR/visit rankings.
+The UI does not invent those endpoints. No manual offline-pack publish step is
+needed because manifests are generated dynamically.
+
+## Acceptance checklist
+
+1. Login/refresh/logout, expired session, invalid and expired invitation tokens.
+2. View-only roles cannot mutate; POI Manager cannot invite or regenerate audio.
+3. Create a POI with Vietnamese name/text, radius 10-200 m, then unpublish with
+   a reason, republish, and archive. Archived POIs remain read-only.
+4. Edit a locale, preserve uploaded audio, upload MP3 <=15 MB, regenerate with
+   explicit overwrite options; inspect SSE updates and duplicate-task handling.
+5. Upload JPG/PNG/WebP <=5 MB, max 10 files, and remove an image.
+6. Generate/regenerate QR; previous code becomes invalid on the backend.
+7. Keep Vietnamese enabled, switch the default locale, and verify backfill/cancel.
+8. Disable a zone containing published POIs; reject bbox spans greater than 1 degree.
+9. Invite/edit/deactivate users, protect self/last Super Admin, create a custom role.
+10. Filter/export audit and each report, verify UTC+7, missing heatmap data and
+    minimum five visits; verify hour trends reject ranges longer than 14 days.
+11. Check desktop/mobile navigation, dialogs, keyboard focus and empty/error states.
+
+Existing legacy stylesheet optimizer warnings are independent of these screens.
