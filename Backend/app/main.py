@@ -1,9 +1,13 @@
 import uvicorn
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from db.mongo import lifespan
 from api.routes.health import router as health_router
 from api.routes.languages import router as languages_router
 from api.routes.pois import router as pois_router
+from api.routes.telemetry import router as telemetry_router
+
+import os
 
 app = FastAPI(
     title="Tourism API",
@@ -11,9 +15,16 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+os.makedirs("static/images", exist_ok=True)
+os.makedirs("static/audio", exist_ok=True)
+
+app.mount("/images", StaticFiles(directory="static/images"), name="images")
+app.mount("/audio", StaticFiles(directory="static/audio"), name="audio")
+
 app.include_router(health_router)
 app.include_router(languages_router)
 app.include_router(pois_router)
+app.include_router(telemetry_router)
 
 @app.get("/")
 async def root():
