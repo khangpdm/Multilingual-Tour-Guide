@@ -22,7 +22,7 @@ export type Role = { role_id: string; name: string; level: number; permissions: 
 export type AudioTask = { task_id: string; poi_id: string; language_code: string; status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled'; progress: number; error: string | null; retry_count: number; created_by: string | null; created_at: string; started_at: string | null; finished_at: string | null }
 export type Audit = { log_id: string; actor_user_id: string; actor_email: string; action: string; target_id: string; before: unknown; after: unknown; timestamp: string }
 export type Data = { languages: Language[]; zones: Zone[]; pois: Poi[]; accounts: Account[]; roles: Role[]; tasks: AudioTask[]; audit: Audit[] }
-type Session = { user: Account; permissions: Permission[] }
+type Session = { user: Account; permissions: Permission[]; capabilities?: { local_database?: boolean } }
 export const stamp = () => new Date().toISOString()
 export const uid = (prefix: string) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`
 export const dateLabel = (value?: string | null) => value ? new Date(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—'
@@ -88,7 +88,7 @@ async function listAll<T>(path: string): Promise<T[]> {
   }
 }
 type Mutation = { permission: Permission; path: string; method?: string; body?: unknown; action: string; target: string; before?: unknown; after?: unknown; demo: (data: Data) => Data }
-type Store = { data: Data; user: Account | null; mode: 'live' | 'demo'; ready: boolean; busy: boolean; error: string; streamStatus: string; can: (permission: Permission) => boolean; level: number; login: (email: string, password: string) => Promise<void>; logout: () => Promise<void>; enterDemo: () => void; switchRole: (role: string) => void; reload: () => Promise<void>; mutate: <T = unknown>(mutation: Mutation) => Promise<T | undefined> }
+type Store = { localDatabase: boolean; data: Data; user: Account | null; mode: 'live' | 'demo'; ready: boolean; busy: boolean; error: string; streamStatus: string; can: (permission: Permission) => boolean; level: number; login: (email: string, password: string) => Promise<void>; logout: () => Promise<void>; enterDemo: () => void; switchRole: (role: string) => void; reload: () => Promise<void>; mutate: <T = unknown>(mutation: Mutation) => Promise<T | undefined> }
 const Context = createContext<Store | null>(null)
 export function AdminProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<Data>(emptyData)
@@ -185,6 +185,6 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   }
   const levels: Record<string, number> = { super_admin: 3, admin: 2, poi_manager: 1 }
   const level = data.roles.find(role => role.role_id === session?.user.role_id)?.level ?? levels[session?.user.role_id ?? ''] ?? 0
-  return <Context.Provider value={{ data, user: session?.user ?? null, mode, ready, busy, error, streamStatus, can, level, login, logout, enterDemo, switchRole, reload, mutate }}>{children}</Context.Provider>
+  return <Context.Provider value={{ localDatabase: mode === 'live' && session?.capabilities?.local_database === true, data, user: session?.user ?? null, mode, ready, busy, error, streamStatus, can, level, login, logout, enterDemo, switchRole, reload, mutate }}>{children}</Context.Provider>
 }
 export function useAdmin() { const context = useContext(Context); if (!context) throw new Error('AdminProvider is required'); return context }

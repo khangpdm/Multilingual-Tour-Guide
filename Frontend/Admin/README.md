@@ -11,8 +11,10 @@ Run `npm run dev` in this directory. Type-check with
 with `npm run build`.
 
 Set `VITE_API_BASE_URL` to the backend origin, or leave it empty when API and
-dashboard share an origin through a reverse proxy. No backend is included in
-this repository. A Vite-only server cannot answer the API requests.
+dashboard share an origin through a reverse proxy. A local FastAPI backend is available in `../../Backend`; see its README.
+Vite proxies `/auth`, `/admin` and `/health` to 127.0.0.1:8000 when
+VITE_API_BASE_URL is empty. This implements the local database-editing subset,
+not the full production API contract.
 
 Production requires HTTPS and the cookie/CORS setup from the spec:
 HttpOnly, Secure, SameSite=Strict, refresh cookie Path=/auth, credentials allowed

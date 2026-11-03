@@ -12,7 +12,7 @@ export function CrudDialog({ title, children, onClose }: { title: string; childr
   useEffect(() => { const previous = document.activeElement as HTMLElement | null; dialog.current?.showModal(); return () => previous?.focus() }, [])
   return <dialog ref={dialog} className="crud-dialog native-dialog" onCancel={event => { event.preventDefault(); onClose() }} aria-label={title}><div className="crud-dialog-head"><h2>{title}</h2><button type="button" className="icon-button" aria-label="Đóng biểu mẫu" onClick={onClose}>×</button></div>{children}</dialog>
 }
-export function DemoNotice() { const { error, mode, busy, streamStatus, can } = useAdmin(); return <>{mode === 'live' && can('audio.view_tasks') && <small className="admin-block" role="status">Audio: {streamStatus}</small>}{busy && <Notice>Đang đồng bộ dữ liệu…</Notice>}{error && <p className="admin-error" role="alert">{error}</p>}</> }
+export function DemoNotice() { const { error, mode, busy, streamStatus, can, localDatabase } = useAdmin(); return <>{localDatabase && <Notice>Đang kết nối MongoDB local. Thay đổi được lưu thật; chưa bật tải ảnh/audio, dịch tự động, TTS và offline pack.</Notice>}{mode === 'live' && can('audio.view_tasks') && <small className="admin-block" role="status">Audio: {streamStatus}</small>}{busy && <Notice>Đang đồng bộ dữ liệu…</Notice>}{error && <p className="admin-error" role="alert">{error}</p>}</> }
 export function usePagination<T>(items: T[]) {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
