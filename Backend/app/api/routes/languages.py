@@ -5,35 +5,30 @@ router = APIRouter(tags=["Languages"])
 
 @router.get("/languages")
 async def get_languages(request: Request):
-    db = request.app.state.db
+    db_pool = request.app.state.db_pool
 
     try:
-        cursor = (
-            db["languages"]
-            .find(
-                {"is_active": True},
-                {
-                    "_id": 1,
-                    "name": 1,
-                    "native_name": 1,
-                    "is_default": 1,
-                    "display_order": 1,
-                },
-            )
-            .sort("display_order", 1)
-        )
-
-        documents = await cursor.to_list(length=100)
+        async with db_pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    SELECT code, name, native_name, is_default, display_order 
+                    FROM languages 
+                    WHERE is_active = 1 
+                    ORDER BY display_order ASC
+                    """
+                )
+                rows = await cursor.fetchall()
 
         languages = [
             {
-                "code": str(document["_id"]),
-                "name": document.get("name", ""),
-                "native_name": document.get("native_name", ""),
-                "is_default": document.get("is_default", False),
-                "display_order": document.get("display_order", 0),
+                "code": row[0],
+                "name": row[1],
+                "native_name": row[2],
+                "is_default": bool(row[3]),
+                "display_order": row[4],
             }
-            for document in documents
+            for row in rows
         ]
 
         return {"languages": languages}
@@ -44,7 +39,9 @@ async def get_languages(request: Request):
         raise HTTPException(
             status_code=500,
             detail={
-                "code": "INTERNAL_ERROR",
-                "message": str(e),
+                "error": {
+                    "code": "INTERNAL_ERROR",
+                    "message": "An internal error occurred",
+                }
             },
         )
