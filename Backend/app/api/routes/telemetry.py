@@ -1,5 +1,4 @@
 from uuid import UUID
-from pymongo.errors import PyMongoError, BulkWriteError
 from datetime import datetime, timezone, timedelta
 import time
 from collections import defaultdict
@@ -10,7 +9,6 @@ from fastapi import (
     Request,
     status,
     Header,
-    Response,
 )
 
 from api.schemas.schemas import TelemetryEventRequest, POIVisitRequest
@@ -58,34 +56,31 @@ def normalize_datetime(value: datetime) -> datetime:
 
     return value
 
-async def get_active_locales(db) -> set[str]:
-    cursor = db["languages"].find({"is_active": True}, {"_id": 1})
-    docs = await cursor.to_list(length=100)
-    return {str(doc["_id"]) for doc in docs}
+async def get_active_locales(pool) -> set[str]:
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("SELECT code FROM languages WHERE is_active = 1")
+            rows = await cursor.fetchall()
+            return {row[0] for row in rows}
 
-async def poi_exists(db, poi_id: str) -> bool:
-    document = await db["pois"].find_one(
-        {
-            "$or": [
-                {"_id": poi_id},
-                {"poi_id": poi_id},
-            ]
-        },
-        {"_id": 1},
-    )
-    return document is not None
+async def poi_exists(pool, poi_id: str) -> bool:
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            # Theo spec 1.1.1: POI active cho guest
+            await cursor.execute(
+                "SELECT 1 FROM poi WHERE poi_id = %s AND status = 'active'",
+                (poi_id,)
+            )
+            return await cursor.fetchone() is not None
 
-async def zone_exists(db, zone_id: str) -> bool:
-    document = await db["zones"].find_one(
-        {
-            "$or": [
-                {"_id": zone_id},
-                {"zone_id": zone_id},
-            ]
-        },
-        {"_id": 1},
-    )
-    return document is not None
+async def zone_exists(pool, zone_id: str) -> bool:
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(
+                "SELECT 1 FROM zone WHERE id = %s AND is_active = 1",
+                (zone_id,)
+            )
+            return await cursor.fetchone() is not None
 
 @router.post("/events", status_code=status.HTTP_202_ACCEPTED)
 async def create_telemetry_events(
@@ -94,8 +89,7 @@ async def create_telemetry_events(
     device_id: str = Header(..., alias="X-Device-Id")
 ):
     check_rate_limit(request)
-
-    db = request.app.state.db
+    db_pool = request.app.state.db_pool
 
     if len(body.events) > 200:
         raise HTTPException(
@@ -111,164 +105,144 @@ async def create_telemetry_events(
             detail="X-Device-Id phải là UUID v4 hợp lệ",
         )
 
-    active_locales = await get_active_locales(db)
+    active_locales = await get_active_locales(db_pool)
     received_at = utc_now()
 
     valid_events = []
     rejected = []
     duplicates = 0
 
-    try:
-        for event in body.events:
-            try:
-                event_id = str(UUID(event.client_event_id, version=4))
-            except ValueError:
-                rejected.append({
-                    "client_event_id": event.client_event_id,
-                    "reason": "INVALID_CLIENT_EVENT_ID",
-                })
-                continue
+    for event in body.events:
+        try:
+            event_id = str(UUID(event.client_event_id, version=4))
+        except ValueError:
+            rejected.append({
+                "client_event_id": event.client_event_id,
+                "reason": "INVALID_CLIENT_EVENT_ID",
+            })
+            continue
 
-            if event.language_code and event.language_code not in active_locales:
+        if event.language_code and event.language_code not in active_locales:
+            rejected.append({
+                "client_event_id": event_id,
+                "reason": "INVALID_LANGUAGE_CODE",
+            })
+            continue
+
+        if event.event_type not in {
+            "AUDIO_PLAY",
+            "QR_SCAN",
+            "PACK_DOWNLOAD",
+        }:
+            rejected.append({
+                "client_event_id": event_id,
+                "reason": "INVALID_EVENT_TYPE",
+            })
+            continue
+
+        if event.event_type in {"AUDIO_PLAY", "QR_SCAN"}:
+            if not event.poi_id:
                 rejected.append({
                     "client_event_id": event_id,
-                    "reason": "INVALID_LANGUAGE_CODE",
+                    "reason": "POI_ID_REQUIRED",
                 })
                 continue
 
-            if event.event_type not in {
-                "AUDIO_PLAY",
-                "QR_SCAN",
-                "PACK_DOWNLOAD",
+            if not await poi_exists(db_pool, event.poi_id):
+                rejected.append({
+                    "client_event_id": event_id,
+                    "reason": "POI_NOT_FOUND",
+                })
+                continue
+
+        if event.event_type == "PACK_DOWNLOAD":
+            if not event.zone_id:
+                rejected.append({
+                    "client_event_id": event_id,
+                    "reason": "ZONE_ID_REQUIRED",
+                })
+                continue
+
+            if not await zone_exists(db_pool, event.zone_id):
+                rejected.append({
+                    "client_event_id": event_id,
+                    "reason": "ZONE_NOT_FOUND",
+                })
+                continue
+
+        if event.event_type == "AUDIO_PLAY":
+            if event.trigger_source not in {
+                "geofence",
+                "qr_scan",
+                "manual_tap",
             }:
                 rejected.append({
                     "client_event_id": event_id,
-                    "reason": "INVALID_EVENT_TYPE",
+                    "reason": "INVALID_TRIGGER_SOURCE",
                 })
                 continue
 
-            if event.event_type in {"AUDIO_PLAY", "QR_SCAN"}:
-                if not event.poi_id:
-                    rejected.append({
-                        "client_event_id": event_id,
-                        "reason": "POI_ID_REQUIRED",
-                    })
-                    continue
-
-                if not await poi_exists(db, event.poi_id):
-                    rejected.append({
-                        "client_event_id": event_id,
-                        "reason": "POI_NOT_FOUND",
-                    })
-                    continue
-
-            if event.event_type == "PACK_DOWNLOAD":
-                if not event.zone_id:
-                    rejected.append({
-                        "client_event_id": event_id,
-                        "reason": "ZONE_ID_REQUIRED",
-                    })
-                    continue
-
-                if not await zone_exists(db, event.zone_id):
-                    rejected.append({
-                        "client_event_id": event_id,
-                        "reason": "ZONE_NOT_FOUND",
-                    })
-                    continue
-
-            if event.event_type == "AUDIO_PLAY":
-                if event.trigger_source not in {
-                    "geofence",
-                    "qr_scan",
-                    "manual_tap",
-                }:
-                    rejected.append({
-                        "client_event_id": event_id,
-                        "reason": "INVALID_TRIGGER_SOURCE",
-                    })
-                    continue
-
-                if event.audio_tier not in {
-                    "tier1",
-                    "tier1_5",
-                    "tier2",
-                    "tier3",
-                }:
-                    rejected.append({
-                        "client_event_id": event_id,
-                        "reason": "INVALID_AUDIO_TIER",
-                    })
-                    continue
-
-            existing = await db["analytics_events"].find_one(
-                {"client_event_id": event_id},
-                {"_id": 1},
-            )
-
-            if existing:
-                duplicates += 1
+            if event.audio_tier not in {
+                "tier1",
+                "tier1_5",
+                "tier2",
+                "tier3",
+            }:
+                rejected.append({
+                    "client_event_id": event_id,
+                    "reason": "INVALID_AUDIO_TIER",
+                })
                 continue
 
-            document = {
-                "client_event_id": event_id,
-                "event_type": event.event_type,
-                "poi_id": event.poi_id,
-                "zone_id": event.zone_id,
-                "language_code": event.language_code,
-                "trigger_source": event.trigger_source,
-                "audio_tier": event.audio_tier,
-                "occurred_at": normalize_datetime(
-                    event.occurred_at
-                ),
-                "received_at": received_at,
-            }
+        norm_occurred_at = normalize_datetime(event.occurred_at)
 
-            valid_events.append(document)
+        valid_events.append((
+            event_id,
+            device_id,
+            event.event_type,
+            event.poi_id,
+            event.zone_id,
+            event.language_code,
+            event.trigger_source,
+            event.audio_tier,
+            norm_occurred_at,
+            received_at
+        ))
 
-        accepted = 0
+    accepted = 0
 
-        if valid_events:
-            try:
-                result = await db["analytics_events"].insert_many(
-                    valid_events,
-                    ordered=False,
-                )
-                accepted = len(result.inserted_ids)
+    if valid_events:
+        try:
+            async with db_pool.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    for ev in valid_events:
+                        try:
+                            await cursor.execute(
+                                """
+                                INSERT INTO analytics_events 
+                                (client_event_id, device_id, event_type, poi_id, zone_id, language_code, trigger_source, audio_tier, occurred_at, received_at)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                """,
+                                ev
+                            )
+                            accepted += 1
+                        except Exception as err:
+                            if getattr(err, "args", [None])[0] == 1062:
+                                duplicates += 1
+                            else:
+                                raise err
+        except Exception:
+            raise HTTPException(
+                status_code=503,
+                detail="Không thể ghi nhận sự kiện vào MySQL",
+            )
 
-            except BulkWriteError as error:
-                details = error.details or {}
-                write_errors = details.get("writeErrors", [])
+    return {
+        "accepted": accepted,
+        "duplicates": duplicates,
+        "rejected": rejected,
+    }
 
-                duplicate_errors = sum(
-                    1
-                    for item in write_errors
-                    if item.get("code") == 11000
-                )
-
-                other_errors = [
-                    item
-                    for item in write_errors
-                    if item.get("code") != 11000
-                ]
-
-                duplicates += duplicate_errors
-                accepted = details.get("nInserted", 0)
-
-                if other_errors:
-                    raise
-
-        return {
-            "accepted": accepted,
-            "duplicates": duplicates,
-            "rejected": rejected,
-        }
-
-    except PyMongoError:
-        raise HTTPException(
-            status_code=503,
-            detail="Không thể ghi nhận sự kiện vào MongoDB",
-        )
 
 @router.post(
     "/poi-visits",
@@ -279,8 +253,7 @@ async def create_poi_visit(
     request: Request,
 ):
     check_rate_limit(request)
-
-    db = request.app.state.db
+    db_pool = request.app.state.db_pool
 
     if len(body.visits) > 200:
         raise HTTPException(
@@ -291,55 +264,38 @@ async def create_poi_visit(
     accepted = 0
 
     try:
-        for visit in body.visits:
-            poi = await db['pois'].find_one(
-                {
-                    "$and": [
-                        {"status": "published"},
-                        {
-                            "$or": [
-                                {"_id": visit.poi_id},
-                                {"poi_id": visit.poi_id}
-                            ]
-                        }
-                    ]
-                },
-                {"_id": 1}
-            )
+        async with db_pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                for visit in body.visits:
+                    await cursor.execute(
+                        "SELECT 1 FROM poi WHERE poi_id = %s AND status = 'active'",
+                        (visit.poi_id,)
+                    )
+                    if not await cursor.fetchone():
+                        continue
 
-            if not poi:
-                continue
+                    occurred_at = normalize_datetime(visit.occurred_at)
+                    hour_bucket = occurred_at.replace(
+                        minute=0,
+                        second=0,
+                        microsecond=0,
+                    )
 
-            occurred_at = normalize_datetime(
-                visit.occurred_at
-            )
-
-            hour_bucket = occurred_at.replace(
-                minute=0,
-                second=0,
-                microsecond=0,
-            )
-
-            await db["poi_density_hourly"].update_one(
-                {
-                    "poi_id": visit.poi_id,
-                    "hour_bucket": hour_bucket,
-                },
-                {
-                    "$inc": {
-                        "visit_count": 1,
-                    }
-                },
-                upsert=True,
-            )
-
-            accepted += 1
+                    await cursor.execute(
+                        """
+                        INSERT INTO poi_density_hourly (poi_id, hour_bucket, visit_count)
+                        VALUES (%s, %s, 1)
+                        ON DUPLICATE KEY UPDATE visit_count = visit_count + 1
+                        """,
+                        (visit.poi_id, hour_bucket)
+                    )
+                    accepted += 1
 
         return {
             "accepted": accepted,
         }
 
-    except PyMongoError:
+    except Exception:
         raise HTTPException(
             status_code=503,
             detail="Không thể ghi nhận lượt ghé POI",
