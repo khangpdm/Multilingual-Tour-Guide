@@ -2,6 +2,7 @@ from uuid import UUID
 from datetime import datetime, timezone, timedelta
 import time
 from collections import defaultdict
+from services.utils import utc_now
 
 from fastapi import (
     APIRouter,
@@ -37,9 +38,6 @@ def check_rate_limit(request: Request):
     timestamps.append(now_ts)
     ip_request_counts[client_ip] = timestamps
 
-def utc_now():
-    return datetime.now(timezone.utc)
-
 def normalize_datetime(value: datetime) -> datetime:
     now = utc_now()
 
@@ -66,9 +64,8 @@ async def get_active_locales(pool) -> set[str]:
 async def poi_exists(pool, poi_id: str) -> bool:
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
-            # Theo spec 1.1.1: POI active cho guest
             await cursor.execute(
-                "SELECT 1 FROM poi WHERE poi_id = %s AND status = 'active'",
+                "SELECT 1 FROM poi WHERE id = %s AND status = 'active'",
                 (poi_id,)
             )
             return await cursor.fetchone() is not None
@@ -268,7 +265,7 @@ async def create_poi_visit(
             async with conn.cursor() as cursor:
                 for visit in body.visits:
                     await cursor.execute(
-                        "SELECT 1 FROM poi WHERE poi_id = %s AND status = 'active'",
+                        "SELECT 1 FROM poi WHERE id = %s AND status = 'active'",
                         (visit.poi_id,)
                     )
                     if not await cursor.fetchone():
