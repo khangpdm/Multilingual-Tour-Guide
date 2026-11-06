@@ -63,7 +63,6 @@ async def get_active_languages(db) -> set[str]:
         {"is_active": True},
         {"_id": 1},
     )
-
     documents = await cursor.to_list(length=100)
     return {document["_id"] for document in documents}
 
@@ -84,50 +83,62 @@ async def load_all_pois(
     db = request.app.state.db
 
     try:
+        sync_timestamp = utc_now()
+
         active_languages = await get_active_languages(db)
         requested_languages = (
             {item.strip() for item in langs.split(",") if item.strip()}
             if langs else active_languages
         )
-
         requested_languages &= active_languages
 
-        query = {"status": "active"}
         if updated_after:
             if updated_after.tzinfo is None:
-                updated_after = updated_after.replace(tzinfo = timezone.utc)
-            query["updated_at"] = {
-                "$gt": updated_after.astimezone(timezone.utc)
-            }
+                updated_after = updated_after.replace(tzinfo=timezone.utc)
+            updated_after_dt = updated_after.astimezone(timezone.utc)
 
-        cursor = db["pois"].find(query).sort("updated_at",1)
+            query = {
+                "$or": [
+                    {"status": "active", "updated_at": {"$gt": updated_after_dt}},
+                    {"status": "inactive", "updated_at": {"$gt": updated_after_dt}}
+                ]
+            }
+        else:
+            query = {"status": "active"}
+
+        cursor = db["pois"].find(query).sort("updated_at", 1)
         documents = await cursor.to_list(length=10000)
 
+        active_docs = [doc for doc in documents if doc.get("status") == "active"]
+        inactive_docs = [doc for doc in documents if doc.get("status") == "inactive"]
+
         pois = [
-            public_poi(doc,active_languages, requested_languages)
-            for doc in documents
+            public_poi(doc, active_languages, requested_languages)
+            for doc in active_docs
         ]
+        deleted_poi_ids = [str(doc.get("poi_id", doc.get("_id"))) for doc in inactive_docs]
 
-        canonical = json.dumps(
-            pois, ensure_ascii=False, sort_keys=True,
-            separators=(",",":"),
-        )
+        max_updated_at = max((doc.get("updated_at") for doc in documents if doc.get("updated_at")), default=sync_timestamp)
+        max_updated_iso = to_iso(max_updated_at)
+        sorted_langs_str = ",".join(sorted(requested_languages))
+        updated_after_iso = to_iso(updated_after) if updated_after else ""
 
-        etag = '"' + hashlib.sha1(canonical.encode("utf-8")).hexdigest() + '"'
+        etag_payload = f"{updated_after_iso}|{sorted_langs_str}|{max_updated_iso}|{len(active_docs)}"
+        etag = '"' + hashlib.sha1(etag_payload.encode("utf-8")).hexdigest() + '"'
 
         response.headers["ETag"] = etag
         response.headers["Cache-Control"] = "no-cache"
 
         if if_none_match == etag:
             return Response(status_code=304, headers={
-                "Etag": etag,
+                "ETag": etag,
                 "Cache-Control": "no-cache",
             })
 
         return {
             "updated_pois": pois,
-            "delete_poi_ids": [],
-            "sync_timestamp": to_iso(utc_now()),
+            "deleted_poi_ids": deleted_poi_ids,
+            "sync_timestamp": to_iso(sync_timestamp),
         }
 
     except PyMongoError:
@@ -139,7 +150,7 @@ async def load_all_pois(
 @router.get("/hotset")
 async def get_hotset(
     request: Request,
-    lat: float = Query(..., ge=-90, le= 90),
+    lat: float = Query(..., ge=-90, le=90),
     lng: float = Query(..., ge=-180, le=180),
     radius_km: float = Query(default=1.5, ge=0.1, le=5),
     limit: int = Query(default=10, ge=1, le=20),
@@ -250,9 +261,6 @@ async def get_poi_detail(
         poi = public_poi(document, active_languages)
         content = poi["content"].get(lang, {})
         audio_url = content.get("audio_url")
-        tiers = ["tier3_local_tts"]
-        if audio_url:
-            tiers.insert(0, "tier1_pregen")
 
         result = {
             "poi": poi,
@@ -284,4 +292,3 @@ async def get_poi_by_qr(
         lang=lang,
         qr_code=qr_code,
     )
-
