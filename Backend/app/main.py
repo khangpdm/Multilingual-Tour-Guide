@@ -1,7 +1,7 @@
 import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from db.mongo import lifespan
+from db.sql import lifespan
 from api.routes.health import router as health_router
 from api.routes.languages import router as languages_router
 from api.routes.pois import router as pois_router
