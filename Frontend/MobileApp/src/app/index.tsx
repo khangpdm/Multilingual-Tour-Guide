@@ -2,8 +2,9 @@ import BottomNav from '@/components/BottomNav';
 import DownloadScreen from '@/screen/DownloadScreen/DownloadScreen';
 import ExploreScreen from '@/screen/ExploreScreen/ExploreScreen';
 import HomeScreen from '@/screen/HomeScreen/HomeScreen';
+import QRScanScreen from '@/screen/QRScreen/QRScreen';
 import SettingsScreen from '@/screen/Setting/SettingsScreen';
-import { AppProvider, useApp } from '@/store/AppContext';
+import { useApp } from '@/store/AppContext';
 import React from 'react';
 import { StatusBar, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -24,7 +25,9 @@ function AppShell() {
           <ExploreScreen />
         </View>
 
-        <View className={`absolute inset-0 ${activeTab === 'scan' ? 'flex' : 'hidden'}`} />
+        <View className={`absolute inset-0 ${activeTab === 'scan' ? 'flex' : 'hidden'}`}>
+          <QRScanScreen />
+        </View>
 
         <View className={`absolute inset-0 ${activeTab === 'download' ? 'flex' : 'hidden'}`}>
           <DownloadScreen />

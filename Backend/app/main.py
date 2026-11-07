@@ -1,36 +1,37 @@
-from pathlib import Path
-
-import sentry_sdk
+import uvicorn
 from fastapi import FastAPI
-from fastapi.routing import APIRoute
-from starlette.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from db.sql import lifespan
+from api.routes.health import router as health_router
+from api.routes.languages import router as languages_router
+from api.routes.pois import router as pois_router
+from api.routes.telemetry import router as telemetry_router
 
-from app.api.main import api_router
-from app.core.config import settings
-
-FRONTEND_DIR = Path(__file__).parent / "frontend"
-
-
-def custom_generate_unique_id(route: APIRoute) -> str:
-    return f"{route.tags[0]}-{route.name}"
-
-
-if settings.SENTRY_DSN and settings.FASTAPI_ENV != "development":
-    sentry_sdk.init(dsn=str(settings.SENTRY_DSN), enable_tracing=True)
+import os
 
 app = FastAPI(
-    title=settings.PROJECT_NAME,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    generate_unique_id_function=custom_generate_unique_id,
+    title="Tourism API",
+    version="0.1",
+    lifespan=lifespan
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[settings.FRONTEND_HOST],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+os.makedirs("static/images", exist_ok=True)
+os.makedirs("static/audio", exist_ok=True)
 
-app.include_router(api_router, prefix=settings.API_V1_STR)
-app.frontend("/", directory=FRONTEND_DIR)
+app.mount("/images", StaticFiles(directory="static/images"), name="images")
+app.mount("/audio", StaticFiles(directory="static/audio"), name="audio")
+
+app.include_router(health_router)
+app.include_router(languages_router)
+app.include_router(pois_router)
+app.include_router(telemetry_router)
+
+@app.get("/")
+async def root():
+    return {
+        "message": "Tourism API is running",
+        "docs": "/docs",
+    }
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)

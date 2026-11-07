@@ -1,2 +1,6 @@
 fastapi
-uvicorn
+uvicorn[standard]
+motor
+pydantic-settings
+python-dotenv
+asyncmy
