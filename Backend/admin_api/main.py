@@ -1,4 +1,5 @@
 import hashlib
+import bcrypt
 import hmac
 import os
 import re
@@ -11,7 +12,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from bson import ObjectId
 from dotenv import dotenv_values
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
@@ -19,16 +19,16 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from pymongo import MongoClient, ReturnDocument
-from pymongo.errors import DuplicateKeyError, PyMongoError
+from pymysql import MySQLError
+
+from admin_api.mysql_store import DuplicateRecordError, MySQLDatabase
 
 ROOT = Path(__file__).resolve().parents[1]
-settings = {**dotenv_values(ROOT.parent / "infra/mongodb/.env"), **dotenv_values(ROOT / ".env"), **os.environ}
+settings = {**dotenv_values(ROOT / ".env"), **os.environ}
 ORIGINS = settings.get("ADMIN_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
 COOKIE = "tour_admin_session"
 PERMISSIONS = ["poi.view", "poi.create", "poi.edit", "poi.delete", "poi.assign_qr", "content.unpublish", "content.restore", "system.manage_constants", "system.manage_languages", "audit.view"]
-client = MongoClient(settings.get("MONGODB_HOST", "127.0.0.1"), int(settings.get("MONGO_PORT", "27017")), username=settings.get("MONGO_APP_USERNAME"), password=settings.get("MONGO_APP_PASSWORD"), authSource=settings.get("MONGODB_DB_NAME", "tourism_db"), serverSelectionTimeoutMS=5000, tz_aware=True)
-database = client[settings.get("MONGODB_DB_NAME", "tourism_db")]
+database = MySQLDatabase(settings)
 mutation_lock = threading.RLock()
 login_attempts = defaultdict(deque)
 
@@ -38,15 +38,22 @@ def now():
 
 
 def identifier(prefix):
-    return prefix + "_" + uuid4().hex
+    return str(uuid4())
 
 
-def password_hash(password, salt):
-    return hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt), n=16384, r=8, p=1).hex()
+def password_hash(password, salt=None):
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12)).decode()
+
+def password_matches(password, user):
+    stored = user.get("password_hash", "").encode()
+    if stored.startswith((b"$2a$", b"$2b$", b"$2y$")):
+        return bcrypt.checkpw(password.encode(), stored)
+    salt = user.get("password_salt") or "00" * 16
+    return hmac.compare_digest(hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt), n=16384, r=8, p=1).hex(), stored.decode())
 
 
 def public(document):
-    return jsonable_encoder({key: value for key, value in document.items() if key not in {"_id", "password_hash", "password_salt"}}, custom_encoder={ObjectId: str})
+    return jsonable_encoder({key: value for key, value in document.items() if key not in {"_id", "password_hash", "password_salt"}})
 
 
 def fail(status, code, message):
@@ -56,20 +63,17 @@ def fail(status, code, message):
 @asynccontextmanager
 async def lifespan(app):
     database.command("ping")
-    database.admin_sessions.create_index("expires_at", expireAfterSeconds=0)
-    database.users.create_index("email", unique=True)
-    database.pois.create_index([("location", "2dsphere")])
+    database.initialize()
     email = settings.get("ADMIN_EMAIL", "admin@tour.local").strip().lower()
-    if not database.users.find_one({"email": email}):
+    if not database.fetch_one("users", {"email": email}):
         password = settings.get("ADMIN_PASSWORD", "")
         if len(password) < 16 or password == "replace_with_a_unique_password":
             raise RuntimeError("Set a unique ADMIN_PASSWORD of at least 16 characters in Backend/.env")
         salt = secrets.token_hex(16)
         user_id = identifier("user")
-        database.users.insert_one({"_id": user_id, "user_id": user_id, "email": email, "full_name": "Local Admin", "role_id": "local_admin", "status": "active", "created_at": now(), "password_salt": salt, "password_hash": password_hash(password, salt)})
-    database.roles.update_one({"_id": "local_admin"}, {"$setOnInsert": {"role_id": "local_admin", "name": "Local database editor", "level": 2, "permissions": PERMISSIONS, "is_system": True}}, upsert=True)
+        database.insert_record("users", {"_id": user_id, "user_id": user_id, "email": email, "full_name": "Local Admin", "role_id": "local_admin", "status": "active", "created_at": now(), "password_salt": salt, "password_hash": password_hash(password, salt)})
     yield
-    client.close()
+    database.close()
 
 
 app = FastAPI(title="Tour Guide Local Admin API", lifespan=lifespan)
@@ -98,14 +102,14 @@ async def invalid_request(request, error):
     return JSONResponse({"error": {"code": "VALIDATION_ERROR", "message": "Invalid input.", "details": [{"field": ".".join(map(str, item["loc"])), "reason": item["msg"]} for item in error.errors()]}}, status_code=422)
 
 
-@app.exception_handler(DuplicateKeyError)
+@app.exception_handler(DuplicateRecordError)
 async def duplicate(request, error):
     return JSONResponse({"error": {"code": "ALREADY_EXISTS", "message": "This record already exists."}}, status_code=409)
 
 
-@app.exception_handler(PyMongoError)
+@app.exception_handler(MySQLError)
 async def database_error(request, error):
-    return JSONResponse({"error": {"code": "DATABASE_UNAVAILABLE", "message": "MongoDB is unavailable. Check Docker."}}, status_code=503)
+    return JSONResponse({"error": {"code": "DATABASE_UNAVAILABLE", "message": "MySQL is unavailable. Check Backend/.env and the MySQL service."}}, status_code=503)
 
 
 class Input(BaseModel):
@@ -119,17 +123,17 @@ class Login(Input):
 
 def current_user(request: Request):
     token = request.cookies.get(COOKIE, "")
-    session = database.admin_sessions.find_one({"_id": hashlib.sha256(token.encode()).hexdigest(), "expires_at": {"$gt": now()}}) if token else None
+    session = database.fetch_valid_session(hashlib.sha256(token.encode()).hexdigest(), now()) if token else None
     if not session:
         fail(401, "UNAUTHENTICATED", "Please sign in.")
-    user = database.users.find_one({"_id": session["user_id"]})
+    user = database.fetch_one("users", {"_id": session["user_id"]})
     if not user or user.get("status") != "active":
         fail(403, "ACCOUNT_DEACTIVATED", "Account is not active.")
     return user
 
 
 def user_permissions(user):
-    role = database.roles.find_one({"_id": user["role_id"]})
+    role = database.fetch_one("roles", {"_id": user["role_id"]})
     return [permission for permission in (role or {}).get("permissions", []) if permission in PERMISSIONS]
 
 
@@ -151,6 +155,10 @@ def health():
     return {"status": "ok", "database": database.name, "mode": "local-admin"}
 
 
+@app.get("/admin/database/summary")
+def database_summary(user=Depends(require("poi.view"))):
+    return {"tables": database.table_counts()}
+
 @app.post("/auth/login")
 def login(body: Login, request: Request, response: Response):
     email = body.email.lower()
@@ -165,19 +173,18 @@ def login(body: Login, request: Request, response: Response):
         if len(login_attempts[key]) >= 5:
             raise HTTPException(429, {"code": "RATE_LIMITED", "message": "Try again in a minute."}, headers={"Retry-After": "60"})
         login_attempts[key].append(time.monotonic())
-    user = database.users.find_one({"email": email})
+    user = database.fetch_one("users", {"email": email})
     salt = (user or {}).get("password_salt", "00" * 16)
-    actual = password_hash(body.password, salt)
-    if not user or not hmac.compare_digest(actual, user.get("password_hash", "")):
+    if not user or not password_matches(body.password, user):
         fail(401, "INVALID_CREDENTIALS", "Invalid email or password.")
     if user.get("status") != "active":
         fail(403, "ACCOUNT_DEACTIVATED", "Account is not active.")
     token = secrets.token_urlsafe(32)
     old_token = request.cookies.get(COOKIE)
     if old_token:
-        database.admin_sessions.delete_one({"_id": hashlib.sha256(old_token.encode()).hexdigest()})
-    database.admin_sessions.insert_one({"_id": hashlib.sha256(token.encode()).hexdigest(), "user_id": user["_id"], "expires_at": now() + timedelta(hours=8)})
-    database.users.update_one({"_id": user["_id"]}, {"$set": {"last_login_at": now()}})
+        database.delete_record("admin_sessions", hashlib.sha256(old_token.encode()).hexdigest())
+    database.insert_record("admin_sessions", {"_id": hashlib.sha256(token.encode()).hexdigest(), "user_id": user["_id"], "expires_at": now() + timedelta(hours=8)})
+    database.update_record("users", user["_id"], {"last_login_at": now()})
     response.set_cookie(COOKIE, token, max_age=28800, httponly=True, samesite="strict", secure=False, path="/")
     return session_response(user)
 
@@ -195,27 +202,27 @@ def refresh(user=Depends(current_user)):
 @app.post("/auth/logout", status_code=204)
 def logout(request: Request):
     token = request.cookies.get(COOKIE, "")
-    database.admin_sessions.delete_one({"_id": hashlib.sha256(token.encode()).hexdigest()})
+    database.delete_record("admin_sessions", hashlib.sha256(token.encode()).hexdigest())
     response = Response(status_code=204)
     response.delete_cookie(COOKIE, path="/", httponly=True, samesite="strict")
     return response
 
 
 def get_record(collection, record_id):
-    document = database[collection].find_one({"_id": record_id})
+    document = database.fetch_one(collection, {"_id": record_id})
     if not document:
         fail(404, "NOT_FOUND", "Record not found.")
     return document
 
 
 def audit(user, action, target, before, after):
-    database.audit_logs.insert_one({"log_id": identifier("audit"), "actor_user_id": user["user_id"], "actor_email": user["email"], "action": action, "target_id": target, "before": public(before) if before else None, "after": public(after) if after else None, "timestamp": now()})
+    database.insert_record("audit_logs", {"_id": identifier("audit"), "log_id": identifier("audit"), "actor_user_id": user["user_id"], "actor_email": user["email"], "action": action, "target_id": target, "before": public(before) if before else None, "after": public(after) if after else None, "timestamp": now()})
 
 
 def update_record(collection, record_id, changes, user, action):
     before = get_record(collection, record_id)
     changes["updated_at"] = now()
-    after = database[collection].find_one_and_update({"_id": record_id}, {"$set": changes}, return_document=ReturnDocument.AFTER)
+    after = database.update_record(collection, record_id, changes)
     audit(user, action, record_id, before, after)
     return after
 
@@ -242,22 +249,22 @@ class ZoneInput(Input):
 @app.get("/admin/zones")
 def zones(user=Depends(require("poi.view"))):
     result = []
-    for zone in database.zones.find().sort("name", 1):
+    for zone in database.fetch_all("zones", order_by="name"):
         zone["zone_id"] = zone.get("zone_id", str(zone["_id"]))
-        zone["poi_count"] = database.pois.count_documents({"zone_id": zone["zone_id"], "status": {"$in": ["active", "published"]}})
+        zone["poi_count"] = database.count_zone_pois(zone["zone_id"])
         result.append(public(zone))
     return {"zones": result}
 
 
 def save_zone(body, user, zone_id=None):
     with mutation_lock:
-        if database.zones.find_one({"name": {"$regex": "^" + re.escape(body.name) + "$", "$options": "i"}, "_id": {"$ne": zone_id}}):
+        if any(zone.get("name", "").casefold() == body.name.casefold() and zone.get("_id") != zone_id for zone in database.fetch_all("zones")):
             fail(409, "DUPLICATE_NAME", "Zone name already exists.")
         if zone_id:
             return public(update_record("zones", zone_id, body.model_dump(), user, "zone.update"))
         zone_id = identifier("zone")
         document = {"_id": zone_id, "zone_id": zone_id, **body.model_dump(), "created_at": now(), "updated_at": now()}
-        database.zones.insert_one(document)
+        database.insert_record("zones", document)
         audit(user, "zone.create", zone_id, None, document)
         return public(document)
 
@@ -286,12 +293,12 @@ class LanguageCreate(LanguageFields):
 
 @app.get("/admin/languages")
 def languages(user=Depends(require("poi.view"))):
-    return {"languages": [public({**document, "code": document["_id"]}) for document in database.languages.find().sort("display_order", 1)]}
+    return {"languages": [public({**document, "code": document["_id"]}) for document in database.fetch_all("languages", order_by="display_order")]}
 
 
 def save_language(code, body, user, create=False):
     with mutation_lock:
-        if create and database.languages.find_one({"_id": code}):
+        if create and database.fetch_one("languages", {"_id": code}):
             fail(409, "ALREADY_EXISTS", "Language already exists.")
         before = None if create else get_record("languages", code)
         fields = body.model_dump(exclude={"code"})
@@ -301,15 +308,15 @@ def save_language(code, body, user, create=False):
             fail(409, "DEFAULT_LANGUAGE_REQUIRED", "Default language must be active.")
         if before and before.get("is_default") and not fields["is_default"]:
             fail(409, "DEFAULT_LANGUAGE_REQUIRED", "Choose another default language first.")
-        if not database.languages.find_one({"is_default": True}) and not fields["is_default"]:
+        if not database.has_default_language() and not fields["is_default"]:
             fail(409, "DEFAULT_LANGUAGE_REQUIRED", "A default language is required.")
         if fields["is_default"]:
-            database.languages.update_many({"_id": {"$ne": code}, "is_default": True}, {"$set": {"is_default": False, "updated_at": now()}})
+            database.clear_default_language_except(code)
         fields.update(code=code, updated_at=now())
         if create:
-            database.languages.insert_one({"_id": code, **fields, "created_at": now()})
+            database.insert_record("languages", {"_id": code, **fields, "created_at": now()})
         else:
-            database.languages.update_one({"_id": code}, {"$set": fields})
+            database.update_record("languages", code, fields)
         after = get_record("languages", code)
         audit(user, "language.create" if create else "language.update", code, before, after)
         return public(after)
@@ -332,6 +339,8 @@ class Location(Input):
 
 class ContentInput(Input):
     name: str = Field(min_length=1, max_length=200)
+    address: str | None = Field(default=None, max_length=500)
+    description: str | None = Field(default=None, max_length=5000)
     text: str = Field(min_length=1, max_length=5000)
 
 
@@ -360,7 +369,7 @@ def poi_public(document):
     if location.get("type") == "Point":
         longitude, latitude = location["coordinates"]
         document["location"] = {"lat": latitude, "lng": longitude}
-    document["content_status"] = {language["_id"]: "ready" if document.get("content", {}).get(language["_id"], {}).get("audio_url") else "missing" for language in database.languages.find({"is_active": True})}
+    document["content_status"] = {language["_id"]: "ready" if document.get("content", {}).get(language["_id"], {}).get("audio_url") else "missing" for language in database.fetch_all("languages", {"is_active": True})}
     return public(document)
 
 
@@ -383,7 +392,7 @@ def content_document(body, locale):
 
 @app.get("/admin/pois")
 def pois(page: int = Query(1, ge=1), page_size: int = Query(100, ge=1, le=100), user=Depends(require("poi.view"))):
-    return {"items": [poi_public(document) for document in database.pois.find().sort("updated_at", -1).skip((page - 1) * page_size).limit(page_size)], "total": database.pois.count_documents({})}
+    return {"items": [poi_public(document) for document in database.fetch_all("pois", order_by="updated_at", descending=True, limit=page_size, offset=(page - 1) * page_size)], "total": database.count("pois")}
 
 
 @app.get("/admin/pois/{poi_id}")
@@ -395,11 +404,11 @@ def poi_detail(poi_id: str, user=Depends(require("poi.view"))):
 def create_poi(body: PoiCreate, user=Depends(require("poi.create"))):
     validate_zone(body.zone_id)
     for locale in body.content:
-        if not database.languages.find_one({"_id": locale, "is_active": True}):
+        if not database.fetch_one("languages", {"_id": locale, "is_active": True}):
             fail(422, "INVALID_LANGUAGE", "Choose an active language.")
     poi_id = identifier("poi")
     document = {"_id": poi_id, "poi_id": poi_id, **body.model_dump(exclude={"content", "location"}), "location": {"type": "Point", "coordinates": [body.location.lng, body.location.lat]}, "content": {locale: content_document(content, locale) for locale, content in body.content.items()}, "status": "active", "qr_code": None, "images": [], "created_at": now(), "updated_at": now(), "last_modified_by": user["user_id"]}
-    database.pois.insert_one(document)
+    database.insert_record("pois", document)
     audit(user, "poi.create", poi_id, None, document)
     return {"poi": poi_public(document), "tasks_created": []}
 
@@ -417,7 +426,7 @@ def edit_poi(poi_id: str, body: PoiFields, user=Depends(require("poi.edit"))):
 def edit_content(poi_id: str, locale: str, body: ContentInput, user=Depends(require("poi.edit"))):
     with mutation_lock:
         existing = editable_poi(poi_id)
-        if not re.fullmatch(r"[a-z]{2,3}(-[A-Z]{2})?", locale) or not database.languages.find_one({"_id": locale, "is_active": True}):
+        if not re.fullmatch(r"[a-z]{2,3}(-[A-Z]{2})?", locale) or not database.fetch_one("languages", {"_id": locale, "is_active": True}):
             fail(422, "INVALID_LANGUAGE", "Choose an active language.")
         content = {**existing.get("content", {}).get(locale, {}), **body.model_dump(), "is_edited": locale != "vi", "updated_at": now()}
         return poi_public(update_record("pois", poi_id, {"content." + locale: content, "last_modified_by": user["user_id"]}, user, "poi.content_edit"))
@@ -463,11 +472,11 @@ def assign_qr(poi_id: str, body: QrInput, user=Depends(require("poi.assign_qr"))
 
 @app.get("/admin/audit-logs")
 def audit_logs(request: Request, page: int = Query(1, ge=1), page_size: int = Query(100, ge=1, le=100), user=Depends(require("audit.view"))):
-    query = {}
+    filters = {}
     for parameter, field in [("actor", "actor_user_id"), ("action", "action"), ("target_id", "target_id")]:
         if request.query_params.get(parameter):
-            query[field] = request.query_params[parameter]
-    for parameter, operator in [("from", "$gte"), ("to", "$lte")]:
+            filters[field] = request.query_params[parameter]
+    for parameter, operator in [("from", "from"), ("to", "to")]:
         if request.query_params.get(parameter):
             try:
                 value = datetime.fromisoformat(request.query_params[parameter].replace("Z", "+00:00"))
@@ -475,5 +484,5 @@ def audit_logs(request: Request, page: int = Query(1, ge=1), page_size: int = Qu
                     raise ValueError()
             except ValueError:
                 fail(422, "INVALID_DATE", "Use an ISO date with timezone.")
-            query.setdefault("timestamp", {})[operator] = value
-    return {"items": [public(document) for document in database.audit_logs.find(query).sort("timestamp", -1).skip((page - 1) * page_size).limit(page_size)], "total": database.audit_logs.count_documents(query)}
+            filters[operator] = value
+    return {"items": [public(document) for document in database.fetch_audit_logs(filters, page, page_size)], "total": database.count_audit_logs(filters)}

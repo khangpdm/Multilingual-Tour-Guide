@@ -15,7 +15,7 @@ export type Permission = typeof permissionGroups[keyof typeof permissionGroups][
 export const permissions = Object.values(permissionGroups).flat() as Permission[]
 export type Language = { code: string; name: string; native_name: string; is_active: boolean; is_default: boolean; display_order: number }
 export type Zone = { zone_id: string; name: string; map_region: { bbox: number[]; min_zoom: number; max_zoom: number }; is_active: boolean; poi_count?: number }
-export type Content = { name: string; text: string; audio_url: string | null; audio_sha256: string | null; audio_source: 'TTS' | 'UPLOADED' | null; is_edited: boolean; updated_at: string }
+export type Content = { name: string; address?: string | null; description?: string | null; text: string; audio_url: string | null; audio_sha256: string | null; audio_source: 'TTS' | 'UPLOADED' | null; is_edited: boolean; updated_at: string }
 export type Poi = { poi_id: string; zone_id: string; category: string; location: { lat: number; lng: number }; geofence_radius_m: number; qr_code: string | null; status: 'published' | 'unpublished' | 'archived'; unpublish_reason?: string | null; images: string[]; content: Record<string, Content>; content_status?: Record<string, string>; last_modified_by: string; created_at: string; updated_at: string }
 export type Account = { user_id: string; email: string; full_name: string | null; role_id: string; status: 'pending_activation' | 'active' | 'deactivated'; created_at: string; last_login_at?: string | null; invite_expires_at?: string }
 export type Role = { role_id: string; name: string; level: number; permissions: Permission[]; is_system: boolean }
@@ -27,7 +27,7 @@ export const stamp = () => new Date().toISOString()
 export const uid = (prefix: string) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`
 export const dateLabel = (value?: string | null) => value ? new Date(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—'
 export const poiName = (poi?: Poi) => poi?.content.vi?.name || 'Chưa có tên'
-export const emptyContent = (): Content => ({ name: '', text: '', audio_url: null, audio_sha256: null, audio_source: null, is_edited: false, updated_at: stamp() })
+export const emptyContent = (): Content => ({ name: '', address: '', description: '', text: '', audio_url: null, audio_sha256: null, audio_source: null, is_edited: false, updated_at: stamp() })
 export const activeTask = (task: AudioTask) => ['queued', 'processing'].includes(task.status)
 export function enqueue(data: Data, poi: Poi, locales: string[], actor: string, replace = false, retranslate = false): Data {
   const tasks = [...data.tasks]
@@ -88,10 +88,11 @@ async function listAll<T>(path: string): Promise<T[]> {
   }
 }
 type Mutation = { permission: Permission; path: string; method?: string; body?: unknown; action: string; target: string; before?: unknown; after?: unknown; demo: (data: Data) => Data }
-type Store = { localDatabase: boolean; data: Data; user: Account | null; mode: 'live' | 'demo'; ready: boolean; busy: boolean; error: string; streamStatus: string; can: (permission: Permission) => boolean; level: number; login: (email: string, password: string) => Promise<void>; logout: () => Promise<void>; enterDemo: () => void; switchRole: (role: string) => void; reload: () => Promise<void>; mutate: <T = unknown>(mutation: Mutation) => Promise<T | undefined> }
+type Store = { localDatabase: boolean; tableCounts: Record<string, number>; data: Data; user: Account | null; mode: 'live' | 'demo'; ready: boolean; busy: boolean; error: string; streamStatus: string; can: (permission: Permission) => boolean; level: number; login: (email: string, password: string) => Promise<void>; logout: () => Promise<void>; enterDemo: () => void; switchRole: (role: string) => void; reload: () => Promise<void>; mutate: <T = unknown>(mutation: Mutation) => Promise<T | undefined> }
 const Context = createContext<Store | null>(null)
 export function AdminProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<Data>(emptyData)
+  const [tableCounts, setTableCounts] = useState<Record<string, number>>({})
   const [session, setSession] = useState<Session | null>(null)
   const [mode, setMode] = useState<'live' | 'demo'>('live')
   const [ready, setReady] = useState(false)
@@ -105,8 +106,10 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     const requestGeneration = ++generation.current
     const allowed = (permission: Permission) => current.user.role_id === 'super_admin' || current.permissions.includes(permission)
     const next: Data = { ...emptyData }
+    let nextTableCounts: Record<string, number> = {}
     const jobs: Promise<void>[] = []
     if (allowed('poi.view')) jobs.push((async () => {
+      nextTableCounts = (await api<{ tables: Record<string, number> }>('/admin/database/summary')).tables
       const summaries = await listAll<{ poi_id: string; content_status: Record<string, string> }>('/admin/pois')
       const pois: Poi[] = []
       for (let offset = 0; offset < summaries.length; offset += 8) pois.push(...await Promise.all(summaries.slice(offset, offset + 8).map(async item => { const result = await api<Poi & { poi?: Poi }>(`/admin/pois/${encodeURIComponent(item.poi_id)}`); return { ...(result.poi ?? result), content_status: item.content_status } })))
@@ -119,7 +122,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     if (allowed('audio.view_tasks')) jobs.push(listAll<AudioTask>('/admin/audio-tasks').then(items => { next.tasks = items }))
     if (allowed('audit.view')) jobs.push(listAll<Audit>('/admin/audit-logs').then(items => { next.audit = items }))
     await Promise.all(jobs)
-    if (generation.current === requestGeneration) setData(next)
+    if (generation.current === requestGeneration) { setData(next); setTableCounts(nextTableCounts) }
   }
   useEffect(() => {
     let cancelled = false
@@ -156,12 +159,12 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   }, [mode, session])
   async function reload() { if (mode === 'live' && session) { setBusy(true); try { const current = await api<Session>('/admin/me/permissions'); setSession(current); await loadLive(current); setError('') } catch (reason) { setError((reason as Error).message) } finally { setBusy(false) } } }
   async function login(email: string, password: string) { const current = await api<Session>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }); setMode('live'); setSession(current); setError(''); try { await loadLive(current) } catch (reason) { setError((reason as Error).message) } }
-  async function logout() { if (mode === 'live') await api('/auth/logout', { method: 'POST' }); generation.current++; setSession(null); setData(emptyData); setMode('live'); setError('') }
+  async function logout() { if (mode === 'live') await api('/auth/logout', { method: 'POST' }); generation.current++; setSession(null); setData(emptyData); setTableCounts({}); setMode('live'); setError('') }
   function enterDemo() {
     generation.current++
     let next = seed()
     try { const saved = localStorage.getItem(demoKey); if (saved) { const parsed = JSON.parse(saved) as Data; if (Object.keys(emptyData).every(key => Array.isArray(parsed[key as keyof Data])) && parsed.roles.some(role => role.role_id === 'super_admin') && parsed.accounts.some(account => account.user_id === 'user_demo')) next = parsed } } catch { setError('Không đọc được dữ liệu đã lưu; dùng dữ liệu mặc định.') }
-    setError(''); setData(next); setMode('demo'); setSession({ user: { ...next.accounts.find(account => account.user_id === 'user_demo')!, role_id: 'super_admin' }, permissions: [...permissions] }); setReady(true)
+    setError(''); setData(next); setTableCounts({}); setMode('demo'); setSession({ user: { ...next.accounts.find(account => account.user_id === 'user_demo')!, role_id: 'super_admin' }, permissions: [...permissions] }); setReady(true)
   }
   function switchRole(roleId: string) { if (mode !== 'demo' || !session) return; const role = data.roles.find(item => item.role_id === roleId); if (role && roleId !== 'user') setSession({ user: { ...session.user, role_id: roleId }, permissions: role.permissions }) }
   async function mutate<T>(mutation: Mutation): Promise<T | undefined> {
@@ -185,6 +188,6 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   }
   const levels: Record<string, number> = { super_admin: 3, admin: 2, poi_manager: 1 }
   const level = data.roles.find(role => role.role_id === session?.user.role_id)?.level ?? levels[session?.user.role_id ?? ''] ?? 0
-  return <Context.Provider value={{ localDatabase: mode === 'live' && session?.capabilities?.local_database === true, data, user: session?.user ?? null, mode, ready, busy, error, streamStatus, can, level, login, logout, enterDemo, switchRole, reload, mutate }}>{children}</Context.Provider>
+  return <Context.Provider value={{ localDatabase: mode === 'live' && session?.capabilities?.local_database === true, tableCounts, data, user: session?.user ?? null, mode, ready, busy, error, streamStatus, can, level, login, logout, enterDemo, switchRole, reload, mutate }}>{children}</Context.Provider>
 }
 export function useAdmin() { const context = useContext(Context); if (!context) throw new Error('AdminProvider is required'); return context }
