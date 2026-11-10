@@ -6,6 +6,7 @@ import pymysql
 from pathlib import Path
 from pymysql.cursors import DictCursor
 from datetime import date
+from app.core.config import PERMISSIONS
 
 
 class DuplicateRecordError(Exception):
@@ -17,7 +18,7 @@ class Cursor:
         self.items = items
 
     def sort(self, field, direction=1):
-        self.items.sort(key=lambda row: row.get(field) or "", reverse=direction < 0)
+        self.items.sort(key=lambda row: (row.get(field) is not None, row.get(field)), reverse=direction < 0)
         return self
 
     def skip(self, count):
@@ -79,7 +80,7 @@ class Collection:
                 cur.execute("SELECT token_hash AS _id, user_id, expires_at FROM admin_sessions")
                 return [_normalize_row(row) for row in cur.fetchall()]
             if self.name == "users":
-                cur.execute("SELECT id AS _id, id AS user_id, email, COALESCE(full_name,'') AS full_name, role_id, LOWER(status) AS status, password_hash, password_salt, last_login_at, created_at, updated_at FROM users")
+                cur.execute("SELECT id AS _id, id AS user_id, username, email, COALESCE(full_name,'') AS full_name, role_id, LOWER(status) AS status, password_hash, password_salt, last_login_at, created_at, updated_at FROM users")
                 return [_normalize_row(row) for row in cur.fetchall()]
             if self.name == "roles":
                 cur.execute("SELECT id AS _id, id AS role_id, name, level, is_system FROM roles")
@@ -98,12 +99,12 @@ class Collection:
                     row["map_region"] = {"bbox": [float(row.pop("min_lng")), float(row.pop("min_lat")), float(row.pop("max_lng")), float(row.pop("max_lat"))], "min_zoom": row["min_zoom"], "max_zoom": row["max_zoom"]}
                 return result
             if self.name == "pois":
-                cur.execute("SELECT id AS _id, id AS poi_id, zone_id, category, ST_Longitude(location) AS lng, ST_Latitude(location) AS lat, radius AS geofence_radius_m, qr_code, status, is_archived, unpublish_reason, images, last_modified_by, created_at, updated_at FROM poi")
+                cur.execute("SELECT id AS _id, id AS poi_id, zone_id, category, ST_Longitude(location) AS lng, ST_Latitude(location) AS lat, radius AS geofence_radius_m, qr_code, status, is_archived, unpublish_reason, images, cover_image, last_modified_by, created_at, updated_at FROM poi")
                 result = [_normalize_row(row) for row in cur.fetchall()]
                 for row in result:
                     row["images"] = _decode_json(row["images"]) or []
                     row["location"] = {"type": "Point", "coordinates": [float(row.pop("lng")), float(row.pop("lat"))]}
-                    cur.execute("SELECT language_code, name, address, description, text, audio_url, audio_sha256, audio_source, is_edited, updated_at FROM poi_content WHERE poi_id=%s", (row["_id"],))
+                    cur.execute("SELECT language_code, name, address, description, introduction, text, audio_url, audio_sha256, audio_source, is_edited, updated_at FROM poi_content WHERE poi_id=%s", (row["_id"],))
                     row["content"] = {content["language_code"]: {key: value for key, value in content.items() if key != "language_code"} for content in cur.fetchall()}
                     row["is_archived"] = bool(row.pop("is_archived", False))
                 return result
@@ -130,7 +131,7 @@ class Collection:
                 if self.name == "admin_sessions":
                     cur.execute("INSERT INTO admin_sessions (token_hash,user_id,expires_at) VALUES (%s,%s,%s)", (doc["_id"], doc["user_id"], doc["expires_at"].replace(tzinfo=None)))
                 elif self.name == "users":
-                    cur.execute("INSERT INTO users (id,email,password_hash,password_salt,full_name,role_id,status) VALUES (%s,%s,%s,%s,%s,%s,'ACTIVE')", (doc["_id"], doc["email"], doc["password_hash"], doc.get("password_salt"), doc.get("full_name"), doc["role_id"]))
+                    cur.execute("INSERT INTO users (id,username,email,password_hash,password_salt,full_name,role_id,status) VALUES (%s,%s,%s,%s,%s,%s,%s,'ACTIVE')", (doc["_id"], doc.get("username"), doc["email"], doc["password_hash"], doc.get("password_salt"), doc.get("full_name"), doc["role_id"]))
                 elif self.name == "zones":
                     bounds = doc["map_region"]["bbox"]
                     cur.execute("INSERT INTO zone (id,name,min_lng,min_lat,max_lng,max_lat,min_zoom,max_zoom,is_active) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)", (doc["_id"], doc["name"], *bounds, doc["map_region"]["min_zoom"], doc["map_region"]["max_zoom"], doc["is_active"]))
@@ -138,9 +139,9 @@ class Collection:
                     cur.execute("INSERT INTO languages (code,name,native_name,is_active,is_default,display_order) VALUES (%s,%s,%s,%s,%s,%s)", (doc["_id"], doc["name"], doc["native_name"], doc["is_active"], doc["is_default"], doc["display_order"]))
                 elif self.name == "pois":
                     point = doc["location"]["coordinates"]
-                    cur.execute("INSERT INTO poi (id,zone_id,category,location,radius,qr_code,status,images,last_modified_by) VALUES (%s,%s,%s,ST_GeomFromText(%s,4326,'axis-order=long-lat'),%s,%s,'active',%s,%s)", (doc["_id"], doc["zone_id"], doc["category"], f"POINT({point[0]} {point[1]})", doc["geofence_radius_m"], doc.get("qr_code"), json.dumps(doc.get("images", [])), doc["last_modified_by"]))
+                    cur.execute("INSERT INTO poi (id,zone_id,category,location,radius,qr_code,status,images,last_modified_by) VALUES (%s,%s,%s,ST_GeomFromText(%s,4326,'axis-order=long-lat'),%s,%s,%s,%s,%s)", (doc["_id"], doc["zone_id"], doc["category"], f"POINT({point[0]} {point[1]})", doc["geofence_radius_m"], doc.get("qr_code"), doc.get("status", "inactive"), json.dumps(doc.get("images", [])), doc["last_modified_by"]))
                     for locale, content in doc.get("content", {}).items():
-                        cur.execute("INSERT INTO poi_content (poi_id,language_code,name,address,description,text,audio_url,audio_sha256,audio_source,is_edited) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (doc["_id"], locale, content["name"], content.get("address"), content.get("description"), content["text"], content.get("audio_url"), content.get("audio_sha256"), content.get("audio_source"), content.get("is_edited", False)))
+                        cur.execute("INSERT INTO poi_content (poi_id,language_code,name,address,description,introduction,text,audio_url,audio_sha256,audio_source,is_edited) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (doc["_id"], locale, content["name"], content.get("address"), content.get("description"), content.get("introduction"), content["text"], content.get("audio_url"), content.get("audio_sha256"), content.get("audio_source"), content.get("is_edited", False)))
                 elif self.name == "audit_logs":
                     cur.execute("INSERT INTO audit_logs (id,actor_user_id,action,target_id,before_data,after_data,ip_hash) VALUES (%s,%s,%s,%s,%s,%s,%s)", (doc["_id"], doc["actor_user_id"], doc["action"], doc.get("target_id"), json.dumps(doc.get("before"), default=str), json.dumps(doc.get("after"), default=str), doc.get("ip_hash")))
                 else:
@@ -189,10 +190,10 @@ class Collection:
                     for key, content in changes.items():
                         if key.startswith("content."):
                             locale = key.split(".", 1)[1]
-                            cur.execute("INSERT INTO poi_content (poi_id,language_code,name,address,description,text,audio_url,audio_sha256,audio_source,is_edited) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE name=VALUES(name),address=VALUES(address),description=VALUES(description),text=VALUES(text),is_edited=VALUES(is_edited)", (doc["_id"], locale, content["name"], content.get("address"), content.get("description"), content["text"], content.get("audio_url"), content.get("audio_sha256"), content.get("audio_source"), content.get("is_edited", False)))
+                            cur.execute("INSERT INTO poi_content (poi_id,language_code,name,address,description,introduction,text,audio_url,audio_sha256,audio_source,is_edited) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE name=VALUES(name),address=VALUES(address),description=VALUES(description),introduction=VALUES(introduction),text=VALUES(text),audio_url=VALUES(audio_url),audio_sha256=VALUES(audio_sha256),audio_source=VALUES(audio_source),is_edited=VALUES(is_edited)", (doc["_id"], locale, content["name"], content.get("address"), content.get("description"), content.get("introduction"), content["text"], content.get("audio_url"), content.get("audio_sha256"), content.get("audio_source"), content.get("is_edited", False)))
                 point = fields["location"]["coordinates"]
                 status = "inactive" if fields.get("is_archived") or fields.get("status") == "inactive" else "active"
-                cur.execute("UPDATE poi SET zone_id=%s,category=%s,location=ST_GeomFromText(%s,4326,'axis-order=long-lat'),radius=%s,qr_code=%s,status=%s,is_archived=%s,unpublish_reason=%s,last_modified_by=%s WHERE id=%s", (fields["zone_id"], fields["category"], f"POINT({point[0]} {point[1]})", fields["geofence_radius_m"], fields.get("qr_code"), status, fields.get("is_archived", False), fields.get("unpublish_reason"), fields.get("last_modified_by", doc["last_modified_by"]), doc["_id"]))
+                cur.execute("UPDATE poi SET zone_id=%s,category=%s,location=ST_GeomFromText(%s,4326,'axis-order=long-lat'),radius=%s,qr_code=%s,status=%s,is_archived=%s,unpublish_reason=%s,images=%s,cover_image=%s,last_modified_by=%s,updated_at=UTC_TIMESTAMP(3) WHERE id=%s", (fields["zone_id"], fields["category"], f"POINT({point[0]} {point[1]})", fields["geofence_radius_m"], fields.get("qr_code"), status, fields.get("is_archived", False), fields.get("unpublish_reason"), json.dumps(fields.get("images", [])), fields.get("cover_image"), fields.get("last_modified_by", doc["last_modified_by"]), doc["_id"]))
             else:
                 raise ValueError(f"Unsupported update collection: {self.name}")
 
@@ -235,14 +236,25 @@ class MySQLDatabase:
                     cur.execute(statement)
             self._ensure_column(cur, "users", "password_salt", "CHAR(32) NULL")
             self._ensure_column(cur, "users", "full_name", "VARCHAR(255) NULL")
+            self._ensure_column(cur, "users", "username", "VARCHAR(50) CHARACTER SET ascii COLLATE ascii_general_ci NULL")
+            cur.execute("SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA=%s AND TABLE_NAME='users' AND INDEX_NAME='uq_users_username'", (self.name,))
+            if not cur.fetchone():
+                cur.execute("ALTER TABLE users ADD UNIQUE KEY uq_users_username (username)")
             self._ensure_column(cur, "poi", "is_archived", "BOOLEAN NOT NULL DEFAULT FALSE")
             self._ensure_column(cur, "poi", "unpublish_reason", "VARCHAR(500) NULL")
+            self._ensure_column(cur, "poi", "cover_image", "VARCHAR(500) NULL")
+            self._ensure_column(cur, "poi_content", "introduction", "TEXT NULL")
+            self._ensure_column(cur, "offline_pack_releases", "source_hash", "CHAR(64) NULL")
+            self._ensure_column(cur, "offline_pack_releases", "error", "TEXT NULL")
+            self._ensure_column(cur, "offline_pack_releases", "poi_count", "INT NOT NULL DEFAULT 0")
             cur.execute("SELECT id FROM roles WHERE id='local_admin'")
-            if not cur.fetchone():
+            new_local_role = not cur.fetchone()
+            if new_local_role:
                 cur.execute("INSERT INTO roles (id,name,level,is_system) VALUES ('local_admin','Local database editor',2,TRUE)")
-            for permission in ["poi.view", "poi.create", "poi.edit", "poi.delete", "poi.assign_qr", "content.unpublish", "content.restore", "system.manage_constants", "system.manage_languages", "audit.view"]:
+            for permission in PERMISSIONS:
                 cur.execute("INSERT IGNORE INTO permissions (id,domain) VALUES (%s,%s)", (permission, permission.split(".")[0]))
-                cur.execute("INSERT IGNORE INTO role_permissions (role_id,permission_id) VALUES ('local_admin',%s)", (permission,))
+                if new_local_role or cur.rowcount == 1:
+                    cur.execute("INSERT IGNORE INTO role_permissions (role_id,permission_id) VALUES ('local_admin',%s)", (permission,))
 
     def _ensure_column(self, cursor, table, column, definition):
         cursor.execute(
