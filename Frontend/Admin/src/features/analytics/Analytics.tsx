@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react'
-import { api, dateLabel, useAdmin, type Permission } from './store'
-import { downloadApi, downloadCsv, Empty, fieldLabel, Field, Heading, Notice, ResultTable, saveBlob, Status } from './ui'
+import { dateLabel, useAdmin } from '../../admin/store'
+import type { Permission } from '../../admin/types'
+import { api } from '../../admin/api'
+import { downloadApi, downloadCsv, Empty, fieldLabel, Field, Heading, Notice, ResultTable, saveBlob, Status } from '../../shared/ui'
 
 type Report = { id: string; label: string; path: string; permission: Permission; exportId?: string }
 const reports: Report[] = [

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { apiBase, useAdmin } from './store'
+import { useAdmin } from '../admin/store'
+import { apiBase } from '../admin/api'
 
 export function Heading({ title, detail, children }: { title: string; detail: string; children?: ReactNode }) { return <div className="page-heading"><div><p className="eyebrow">MULTILINGUAL TOUR GUIDE / QUẢN TRỊ</p><h1>{title}</h1><p className="page-subtitle">{detail}</p></div><div className="heading-actions">{children}</div></div> }
 export function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="field"><span>{label}</span>{children}</label> }
