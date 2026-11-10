@@ -1,4 +1,5 @@
 import re
+from typing import Literal
 
 from pydantic import Field, model_validator
 
@@ -14,11 +15,12 @@ class ContentInput(Input):
     name: str = Field(min_length=1, max_length=200)
     address: str | None = Field(default=None, max_length=500)
     description: str | None = Field(default=None, max_length=5000)
+    introduction: str | None = Field(default=None, max_length=20000)
     text: str = Field(min_length=1, max_length=5000)
 
 
 class PoiFields(Input):
-    category: str = Field(min_length=1, max_length=50)
+    category: Literal["heritage", "museum", "religion", "architecture", "park", "food"]
     zone_id: str = Field(min_length=1, max_length=100)
     location: Location
     geofence_radius_m: int = Field(ge=10, le=200, default=30)

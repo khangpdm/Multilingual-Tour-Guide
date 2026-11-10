@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 
 from app.db.connection import database
+from app.core.messages import localize_messages, message_vi
 
 
 def now():
@@ -16,11 +17,14 @@ def identifier(prefix):
 
 
 def public(document):
-    return jsonable_encoder({key: value for key, value in document.items() if key not in {"_id", "password_hash", "password_salt"}})
+    return jsonable_encoder(
+        localize_messages({key: value for key, value in document.items() if key not in {"_id", "password_hash", "password_salt"}}),
+        custom_encoder={datetime: lambda value: (value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value).isoformat()},
+    )
 
 
 def fail(status, code, message):
-    raise HTTPException(status, {"code": code, "message": message})
+    raise HTTPException(status, {"code": code, "message": message_vi(message)})
 
 
 def get_record(collection, record_id):

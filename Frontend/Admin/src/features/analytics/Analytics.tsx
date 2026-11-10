@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { useState, type FormEvent } from 'react'
 import { dateLabel, useAdmin } from '../../admin/store'
 import type { Permission } from '../../admin/types'
@@ -60,7 +61,7 @@ export function Analytics() {
   const [format, setFormat] = useState('csv')
   const [result, setResult] = useState<RecordValue | null>(null)
   const [loadedQuery, setLoadedQuery] = useState('')
-  const [message, setMessage] = useState('')
+
   const [pending, setPending] = useState(false)
   function params() {
     const query = new URLSearchParams()
@@ -83,7 +84,7 @@ export function Analytics() {
     if (reportId === 'trend' && !target.trim()) throw new Error('Nhập đúng một POI ID hoặc Zone ID.')
   }
   async function load(event: FormEvent) {
-    event.preventDefault(); setMessage(''); setResult(null); setPending(true)
+    event.preventDefault(); setResult(null); setPending(true)
     try {
       validate(); const query = params(); setLoadedQuery(query.toString())
       if (mode === 'live') setResult(await api<RecordValue>(`${report!.path}?${query}`))
@@ -93,24 +94,24 @@ export function Analytics() {
         const missing_translation = pois.map(poi => ({ poi_id: poi.poi_id, missing_locales: codes.filter(code => !poi.content[code]?.text) })).filter(item => item.missing_locales.length)
         const missing_pregen_audio = pois.map(poi => ({ poi_id: poi.poi_id, missing_locales: codes.filter(code => !poi.content[code]?.audio_url) })).filter(item => item.missing_locales.length)
         setResult({ missing_translation: missing_translation.slice(0, limit), missing_pregen_audio: missing_pregen_audio.slice(0, limit), totals: { pois_checked: pois.length, pois_with_gaps: new Set([...missing_translation, ...missing_pregen_audio].map(item => item.poi_id)).size } })
-      } else setMessage('Chưa có dữ liệu cho báo cáo này.')
-    } catch (error) { setMessage((error as Error).message) } finally { setPending(false) }
+      } else toast.info('Chưa có dữ liệu cho báo cáo này.')
+    } catch (error) { toast.error((error as Error).message) } finally { setPending(false) }
   }
   const exportable = report?.exportId && can('analytics.export') && (reportId !== 'trend' || can('heatmap.export')) && (reportId !== 'top' || metric === 'audio_plays')
   const stale = loadedQuery !== params().toString()
   async function exportReport() {
-    setPending(true); setMessage('')
+    setPending(true)
     try {
       validate(); if (!result || stale || !exportable) throw new Error('Tải báo cáo với bộ lọc hiện tại trước khi xuất.')
       if (mode === 'live') { const query = new URLSearchParams(loadedQuery); query.set('report', report!.exportId!); query.set('format', format); await downloadApi(`/admin/analytics/export?${query}`, `${report!.exportId}.${format}`) }
       else if (format === 'xlsx') throw new Error('Chỉ có thể xuất CSV hoặc JSON trong chế độ hiện tại.')
       else if (format === 'json') saveBlob(new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' }), 'demo-content-gaps.json')
       else { const rows = flatten(result); const columns = [...new Set(rows.flatMap(row => Object.keys(row)))]; downloadCsv('demo-content-gaps.csv', [columns, ...rows.map(row => columns.map(column => typeof row[column] === 'object' ? JSON.stringify(row[column]) : String(row[column] ?? '')))]) }
-    } catch (error) { setMessage((error as Error).message) } finally { setPending(false) }
+    } catch (error) { toast.error((error as Error).message) } finally { setPending(false) }
   }
   if (!report) return <Empty text="Bạn không có quyền xem báo cáo." />
   const summary = result ? Object.entries(result).filter(([key, value]) => typeof value === 'number' && key !== 'hour') : []
-  return <><Heading title="Phân tích & heatmap" detail="Báo cáo tổng hợp từ backend; múi giờ Asia/Ho_Chi_Minh (UTC+7)."><select className="select-control" aria-label="Định dạng báo cáo" value={format} onChange={event => setFormat(event.target.value)}><option value="csv">CSV</option><option value="xlsx">XLSX</option><option value="json">JSON</option></select>{exportable && <button className="secondary-button" disabled={pending || !result || stale} onClick={() => void exportReport()}>Xuất báo cáo</button>}</Heading><section className="panel"><div className="tabs">{available.map(item => <button disabled={pending} key={item.id} className={item.id === reportId ? 'tab-active' : ''} onClick={() => { setReportId(item.id); setResult(null); setMessage(''); setFrom(dateKey(item.id === 'cache' ? 6 : 29)); setTo(dateKey()); setLimit(item.id === 'gaps' || item.id === 'qr' ? 50 : 10) }}>{item.label}</button>)}</div><form className="filter-row" onSubmit={load}>
+  return <><Heading title="Phân tích & heatmap" detail="Báo cáo tổng hợp từ backend; múi giờ Asia/Ho_Chi_Minh (UTC+7)."><select className="select-control" aria-label="Định dạng báo cáo" value={format} onChange={event => setFormat(event.target.value)}><option value="csv">CSV</option><option value="xlsx">XLSX</option><option value="json">JSON</option></select>{exportable && <button className="secondary-button" disabled={pending || !result || stale} onClick={() => void exportReport()}>Xuất báo cáo</button>}</Heading><section className="panel"><div className="tabs">{available.map(item => <button disabled={pending} key={item.id} className={item.id === reportId ? 'tab-active' : ''} onClick={() => { setReportId(item.id); setResult(null); setFrom(dateKey(item.id === 'cache' ? 6 : 29)); setTo(dateKey()); setLimit(item.id === 'gaps' || item.id === 'qr' ? 50 : 10) }}>{item.label}</button>)}</div><form className="filter-row" onSubmit={load}>
     {reportId === 'heatmap' ? <><Field label="Ngày"><input required type="date" value={date} onChange={event => setDate(event.target.value)} /></Field><Field label="Giờ (UTC+7)"><input required type="number" min="0" max="23" step="1" value={hour} onChange={event => setHour(event.target.valueAsNumber)} /></Field></> : reportId === 'offline' ? <Field label="Số ngày (1–90)"><input required type="number" min="1" max="90" value={days} onChange={event => setDays(event.target.valueAsNumber)} /></Field> : reportId !== 'gaps' && <><Field label="Từ ngày"><input required type="date" value={from} onChange={event => setFrom(event.target.value)} /></Field><Field label="Đến ngày"><input required type="date" min={from} value={to} onChange={event => setTo(event.target.value)} /></Field></>}
     {reportId === 'top' && <Field label="Chỉ số"><select value={metric} onChange={event => setMetric(event.target.value)}><option value="audio_plays">Lượt nghe</option><option value="qr_scans">Quét QR</option><option value="visits">Lượt ghé</option></select></Field>}
     {['top', 'qr', 'gaps'].includes(reportId) && <Field label="Số kết quả"><input required type="number" min="1" max={reportId === 'gaps' ? 200 : 50} value={limit} onChange={event => setLimit(event.target.valueAsNumber)} /></Field>}
@@ -118,5 +119,5 @@ export function Analytics() {
     {reportId === 'gaps' && <Field label="Zone ID (tùy chọn)"><input value={zone} onChange={event => setZone(event.target.value)} /></Field>}
     {reportId === 'trend' && <><Field label="Đối tượng"><select value={targetType} onChange={event => { setTargetType(event.target.value); setTarget('') }}><option value="poi_id">Một POI</option><option value="zone_id">Một khu vực</option></select></Field><Field label={targetType}><input required value={target} onChange={event => setTarget(event.target.value)} /></Field><Field label="Gom theo"><select value={granularity} onChange={event => setGranularity(event.target.value)}><option value="hour">Giờ (tối đa 14 ngày)</option><option value="day">Ngày (tối đa 366 ngày)</option></select></Field></>}
     <button className="primary-button" disabled={pending}>{pending ? 'Đang tải…' : 'Xem báo cáo'}</button></form>
-    {reportId === 'languages' && <Notice>Mỗi thiết bị được gán ngôn ngữ nghe nhiều nhất; hòa thì lấy ngôn ngữ gần nhất. Không tính tỷ lệ theo tổng lượt nghe.</Notice>}{reportId === 'qr' && <Notice>Tỷ lệ QR = lượt phát audio từ QR / tổng lượt phát × 100; không phải số lần quét / tổng lượt phát.</Notice>}{reportId === 'cache' && <Notice>MVP chỉ có tier1 và tier3; tier1_5 và tier2 trả 0.0. On-demand/presence thuộc giai đoạn 2.</Notice>}{reportId === 'top' && metric !== 'audio_plays' && <Notice>API xuất hiện chỉ đặc tả top lượt nghe. Có thể xem quét QR/lượt ghé nhưng chưa xuất hai biến thể này.</Notice>}{message && <Notice>{message}</Notice>}{result && <>{stale && <Notice>Bộ lọc đã thay đổi. Nhấn “Xem báo cáo” để cập nhật; dữ liệu bên dưới thuộc lần tải trước.</Notice>}<div className="admin-kpis">{summary.map(([key, value]) => <div className="mini-kpi" key={key}><span>{fieldLabel(key)}</span><strong>{String(value)}</strong></div>)}</div>{result.totals && <Notice>{Object.entries(result.totals as RecordValue).map(([key, value]) => `${fieldLabel(key)}: ${value}`).join(' · ')}</Notice>}{reportId === 'heatmap' && <SpatialHeatmap points={(result.points || []) as Point[]} />}{reportId === 'trend' && <TrendChart rows={(result.series || []) as RecordValue[]} />}<ResultTable rows={flatten(result)} /></>}{!result && !message && <Empty text="Chọn bộ lọc và nhấn Xem báo cáo." />}</section></>
+    {reportId === 'languages' && <Notice>Mỗi thiết bị được gán ngôn ngữ nghe nhiều nhất; hòa thì lấy ngôn ngữ gần nhất. Không tính tỷ lệ theo tổng lượt nghe.</Notice>}{reportId === 'qr' && <Notice>Tỷ lệ QR = lượt phát audio từ QR / tổng lượt phát × 100; không phải số lần quét / tổng lượt phát.</Notice>}{reportId === 'cache' && <Notice>MVP chỉ có tier1 và tier3; tier1_5 và tier2 trả 0.0. On-demand/presence thuộc giai đoạn 2.</Notice>}{reportId === 'top' && metric !== 'audio_plays' && <Notice>API xuất hiện chỉ đặc tả top lượt nghe. Có thể xem quét QR/lượt ghé nhưng chưa xuất hai biến thể này.</Notice>}{result && <>{stale && <Notice>Bộ lọc đã thay đổi. Nhấn “Xem báo cáo” để cập nhật; dữ liệu bên dưới thuộc lần tải trước.</Notice>}<div className="admin-kpis">{summary.map(([key, value]) => <div className="mini-kpi" key={key}><span>{fieldLabel(key)}</span><strong>{String(value)}</strong></div>)}</div>{result.totals && <Notice>{Object.entries(result.totals as RecordValue).map(([key, value]) => `${fieldLabel(key)}: ${value}`).join(' · ')}</Notice>}{reportId === 'heatmap' && <SpatialHeatmap points={(result.points || []) as Point[]} />}{reportId === 'trend' && <TrendChart rows={(result.series || []) as RecordValue[]} />}<ResultTable rows={flatten(result)} /></>}{!result && <Empty text="Chọn bộ lọc và nhấn Xem báo cáo." />}</section></>
 }
