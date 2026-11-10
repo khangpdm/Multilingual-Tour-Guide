@@ -1,0 +1,39 @@
+import uvicorn
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from db.sql import lifespan
+from api.routes.health import router as health_router
+from api.routes.languages import router as languages_router
+from api.routes.pois import router as pois_router
+from api.routes.telemetry import router as telemetry_router
+from api.routes.audio import router as audio_router
+
+import os
+
+app = FastAPI(
+    title="Tourism API",
+    version="0.1",
+    lifespan=lifespan
+)
+
+os.makedirs("static/images", exist_ok=True)
+os.makedirs("static/audio", exist_ok=True)
+
+app.mount("/images", StaticFiles(directory="static/images"), name="images")
+app.mount("/static/audio", StaticFiles(directory="static/audio"), name="audio")
+
+app.include_router(health_router)
+app.include_router(languages_router)
+app.include_router(pois_router)
+app.include_router(telemetry_router)
+app.include_router(audio_router)
+
+@app.get("/")
+async def root():
+    return {
+        "message": "Tourism API is running",
+        "docs": "/docs",
+    }
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
