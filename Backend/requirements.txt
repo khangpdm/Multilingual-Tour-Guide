@@ -4,3 +4,6 @@ motor
 pydantic-settings
 python-dotenv
 asyncmy
+cryptography
+edge-tts 
+deep-translator

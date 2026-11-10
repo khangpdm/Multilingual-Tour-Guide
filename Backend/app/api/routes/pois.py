@@ -2,7 +2,6 @@ from fastapi import APIRouter, Response, Request, Query, Header, HTTPException
 from datetime import datetime, timezone
 from typing import Optional
 import hashlib
-from pymongo.errors import PyMongoError
 from services.utils import utc_now
 from services.pois_service import to_iso, public_poi, get_active_languages, find_active_poi
 router = APIRouter(prefix="/poi", tags=["POI"])
@@ -16,13 +15,11 @@ async def load_all_pois(
     langs: Optional[str] = Query(default=None),
     if_none_match: Optional[str] = Header(default=None, alias="If-None-Match"),
 ):
-    """
-    G3. GET /poi/load-all — Delta Sync
-    """
+    
     db_pool = request.app.state.db_pool
 
     try:
-        sync_timestamp = datetime.now(timezone.utc)
+        sync_timestamp = utc_now
 
         async with db_pool.acquire() as conn:
             async with conn.cursor() as cursor:
@@ -38,17 +35,10 @@ async def load_all_pois(
                         updated_after = updated_after.replace(tzinfo=timezone.utc)
                     updated_after_dt = updated_after.astimezone(timezone.utc)
 
-                    sql = """
-                        SELECT id, zone_id, category, status, radius, qr_code, images, updated_at,
-                               ST_X(location) as lng, ST_Y(location) as lat
-                        FROM poi 
-                        WHERE updated_after > %s OR (status = 'inactive' AND updated_at > %s)
-                        ORDER BY updated_at ASC
-                    """
                     await cursor.execute(
                         """
                         SELECT id, zone_id, category, status, radius, qr_code, images, updated_at,
-                               ST_X(location) as lng, ST_Y(location) as lat
+                               ST_Y(location) as lng, ST_X(location) as lat
                         FROM poi 
                         WHERE updated_at > %s
                         ORDER BY updated_at ASC
@@ -59,7 +49,7 @@ async def load_all_pois(
                     await cursor.execute(
                         """
                         SELECT id, zone_id, category, status, radius, qr_code, images, updated_at,
-                               ST_X(location) as lng, ST_Y(location) as lat
+                               ST_Y(location) as lng, ST_X(location) as lat
                         FROM poi 
                         WHERE status = 'active'
                         ORDER BY updated_at ASC
@@ -202,55 +192,6 @@ async def get_hotset(
         )
 
 
-async def find_active_poi_by_field(pool, field: str, value: str):
-    if field not in {"id", "qr_code"}:
-        return None
-    
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cursor:
-            await cursor.execute(
-                f"""
-                SELECT id, zone_id, category, status, radius, qr_code, images, updated_at,
-                       ST_X(location) as lng, ST_Y(location) as lat
-                FROM poi WHERE {field} = %s AND status = 'active'
-                """,
-                (value,)
-            )
-            prow = await cursor.fetchone()
-            if not prow:
-                return None
-            
-            poi_id = prow[0]
-            await cursor.execute(
-                """
-                SELECT language_code, name, address, description, text, 
-                       audio_url, audio_sha256, updated_at
-                FROM poi_content WHERE poi_id = %s
-                """,
-                (poi_id,)
-            )
-            content_rows = await cursor.fetchall()
-            content_dict = {}
-            for crow in content_rows:
-                content_dict[crow[0]] = {
-                    "name": crow[1], "address": crow[2], "description": crow[3],
-                    "text": crow[4], "audio_url": crow[5], "audio_sha256": crow[6], "updated_at": crow[7]
-                }
-
-            return {
-                "poi_id": poi_id,
-                "zone_id": prow[1],
-                "category": prow[2],
-                "status": prow[3],
-                "geofence_radius_m": prow[4],
-                "qr_code": prow[5],
-                "images": prow[6] if isinstance(prow[6], list) else [],
-                "updated_at": prow[7],
-                "location": {"lng": prow[8], "lat": prow[9]},
-                "content": content_dict
-            }
-
-
 @router.get("/poi/{poi_id}")
 async def get_poi_detail(
     poi_id: str,
@@ -267,7 +208,7 @@ async def get_poi_detail(
                 detail="Ngôn ngữ chưa được bật",
             )
 
-        document = await find_active_poi_by_field(db_pool, "id", poi_id)
+        document = await find_active_poi(db_pool, "id", poi_id)
         trigger_source = "manual_tap"
 
         if not document:
@@ -319,7 +260,7 @@ async def get_poi_by_qr(
                 detail="Ngôn ngữ chưa được bật",
             )
 
-        document = await find_active_poi_by_field(db_pool, "qr_code", qr_code)
+        document = await find_active_poi(db_pool, "qr_code", qr_code)
         trigger_source = "qr_scan"
 
         if not document:
