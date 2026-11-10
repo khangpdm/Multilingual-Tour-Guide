@@ -3,11 +3,13 @@ import './admin/admin.css'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Activity, BarChart3, ChevronRight, FileAudio, Globe, LayoutDashboard, Eye, EyeOff, MapPin, Menu, ShieldCheck, Users, X } from 'lucide-react'
-import { AdminProvider, api, dateLabel, useAdmin, type Permission } from './admin/store'
-import { Accounts, AudioTasks, AuditLogs, Languages, Roles } from './admin/Management'
-import { PoiEditor, Pois, ZoneEditor, Zones } from './admin/Places'
-import { Analytics } from './admin/Analytics'
-import { DemoNotice, Empty, Field, Heading, Notice } from './admin/ui'
+import { AdminProvider, dateLabel, useAdmin } from './admin/store'
+import type { Permission } from './admin/types'
+import { api } from './admin/api'
+import { Accounts, AudioTasks, AuditLogs, Languages, Roles } from './features/management/Management'
+import { PoiEditor, Pois, ZoneEditor, Zones } from './features/places/Places'
+import { Analytics } from './features/analytics/Analytics'
+import { DemoNotice, Empty, Field, Heading, Notice } from './shared/ui'
 
 const navigation: { label: string; href: string; icon: typeof MapPin; permissions?: Permission[] }[] = [
   { label: 'Trang chủ', href: '/', icon: LayoutDashboard },
