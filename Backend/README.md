@@ -12,7 +12,7 @@ Install and run from PowerShell:
 python -m venv Backend/.venv
 Backend/.venv/Scripts/python.exe -m pip install -r Backend/requirements.txt
 cd Backend
-.venv/Scripts/python.exe -m uvicorn admin_api.main:app --host 127.0.0.1 --port 8000
+.venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 On startup the API checks MySQL, applies the safe `CREATE TABLE IF NOT EXISTS` schema and additive Admin columns, creates the local Admin role/permissions, and creates the configured Admin user if it does not already exist. Existing passwords are not overwritten. Passwords use bcrypt; seeded bcrypt accounts are accepted.

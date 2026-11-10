@@ -1,28 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { api, apiBase, ApiError, listAll } from './api'
+import { permissions, type Account, type AudioTask, type Audit, type Content, type Data, type Language, type Permission, type Poi, type Role, type Session, type Zone } from './types'
 
-export const permissionGroups = {
-  poi_management: ['poi.create', 'poi.edit', 'poi.delete', 'poi.view', 'poi.assign_qr'],
-  content_moderation: ['content.unpublish', 'content.restore', 'content.flag'],
-  audio_tasks: ['audio.trigger_regenerate', 'audio.view_tasks', 'audio.cancel_task', 'audio.retry_task'],
-  user_management: ['user.create', 'user.edit', 'user.deactivate', 'user.view'],
-  role_management: ['role.create', 'role.assign_permission', 'role.view'],
-  analytics: ['analytics.view_overview', 'analytics.view_poi_reports', 'analytics.view_user_reports', 'analytics.export'],
-  audit: ['audit.view', 'audit.export'],
-  system_config: ['system.manage_constants', 'system.manage_languages', 'system.manage_integrations'],
-  heatmap_monitoring: ['heatmap.view_live', 'heatmap.view_trend', 'heatmap.configure_zones', 'heatmap.export'],
-} as const
-export type Permission = typeof permissionGroups[keyof typeof permissionGroups][number]
-export const permissions = Object.values(permissionGroups).flat() as Permission[]
-export type Language = { code: string; name: string; native_name: string; is_active: boolean; is_default: boolean; display_order: number }
-export type Zone = { zone_id: string; name: string; map_region: { bbox: number[]; min_zoom: number; max_zoom: number }; is_active: boolean; poi_count?: number }
-export type Content = { name: string; address?: string | null; description?: string | null; text: string; audio_url: string | null; audio_sha256: string | null; audio_source: 'TTS' | 'UPLOADED' | null; is_edited: boolean; updated_at: string }
-export type Poi = { poi_id: string; zone_id: string; category: string; location: { lat: number; lng: number }; geofence_radius_m: number; qr_code: string | null; status: 'published' | 'unpublished' | 'archived'; unpublish_reason?: string | null; images: string[]; content: Record<string, Content>; content_status?: Record<string, string>; last_modified_by: string; created_at: string; updated_at: string }
-export type Account = { user_id: string; email: string; full_name: string | null; role_id: string; status: 'pending_activation' | 'active' | 'deactivated'; created_at: string; last_login_at?: string | null; invite_expires_at?: string }
-export type Role = { role_id: string; name: string; level: number; permissions: Permission[]; is_system: boolean }
-export type AudioTask = { task_id: string; poi_id: string; language_code: string; status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled'; progress: number; error: string | null; retry_count: number; created_by: string | null; created_at: string; started_at: string | null; finished_at: string | null }
-export type Audit = { log_id: string; actor_user_id: string; actor_email: string; action: string; target_id: string; before: unknown; after: unknown; timestamp: string }
-export type Data = { languages: Language[]; zones: Zone[]; pois: Poi[]; accounts: Account[]; roles: Role[]; tasks: AudioTask[]; audit: Audit[] }
-type Session = { user: Account; permissions: Permission[]; capabilities?: { local_database?: boolean } }
 export const stamp = () => new Date().toISOString()
 export const uid = (prefix: string) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`
 export const dateLabel = (value?: string | null) => value ? new Date(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—'
@@ -54,37 +33,6 @@ function seed(): Data {
       { role_id: 'poi_manager', name: 'POI Manager', level: 1, permissions: ['poi.create', 'poi.edit', 'poi.delete', 'poi.view', 'poi.assign_qr', 'audio.view_tasks', 'audio.retry_task', 'analytics.view_poi_reports', 'heatmap.view_live'], is_system: true },
       { role_id: 'user', name: 'Guest Tourist', level: 0, permissions: [], is_system: true },
     ], tasks: [], audit: [],
-  }
-}
-const environment = (import.meta as ImportMeta & { env: Record<string, string> }).env
-export const apiBase = (environment.VITE_API_BASE_URL || '').replace(/\/$/, '')
-export function assetUrl(path: string | null) { return !path ? '' : path.startsWith('/') && !path.startsWith('//') ? `${apiBase}${path}` : /^https:\/\//i.test(path) ? path : '' }
-class ApiError extends Error { constructor(message: string, public status: number) { super(message) } }
-let refreshPromise: Promise<Response> | null = null
-export async function api<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
-  const headers = new Headers(init.headers)
-  if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json')
-  const response = await fetch(`${apiBase}${path}`, { ...init, headers, credentials: 'include' })
-  if (response.status === 401 && retry && !path.startsWith('/auth/')) {
-    refreshPromise ??= fetch(`${apiBase}/auth/refresh`, { method: 'POST', credentials: 'include' }).finally(() => { refreshPromise = null })
-    if ((await refreshPromise).ok) return api<T>(path, init, false)
-  }
-  if (!response.ok) {
-    const body = await response.json().catch(() => null)
-    if (!path.startsWith('/auth/') && (response.status === 401 || ['ACCOUNT_DEACTIVATED', 'ACCOUNT_PENDING'].includes(body?.error?.code))) window.dispatchEvent(new Event('admin-session-expired'))
-    const details = body?.error?.details?.map((item: { field: string; reason: string }) => `${item.field}: ${item.reason}`).join('; ')
-    throw new ApiError(`${body?.error?.message || `HTTP ${response.status}`}${details ? ` — ${details}` : ''}${response.status === 429 ? ` (thử lại sau ${response.headers.get('Retry-After') || 'ít'} giây)` : ''}`, response.status)
-  }
-  if (response.status === 204) return undefined as T
-  if (!response.headers.get('Content-Type')?.includes('application/json')) throw new Error('Chưa kết nối được máy chủ quản trị. Kiểm tra cấu hình máy chủ.')
-  return response.json() as Promise<T>
-}
-async function listAll<T>(path: string): Promise<T[]> {
-  const items: T[] = []
-  for (let page = 1; ; page++) {
-    const result = await api<{ items: T[]; total: number }>(`${path}?page=${page}&page_size=100`)
-    items.push(...result.items)
-    if (items.length >= result.total || !result.items.length) return items
   }
 }
 type Mutation = { permission: Permission; path: string; method?: string; body?: unknown; action: string; target: string; before?: unknown; after?: unknown; demo: (data: Data) => Data }
