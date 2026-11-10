@@ -1,22 +1,24 @@
-import hashlib
 import secrets
 import time
-from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
-from app.core.config import COOKIE
-from app.core.security import current_user, password_matches, require, session_response
+from app.core.config import COOKIE, COOKIE_SECURE
+from app.core.security import current_user, password_hash, password_matches, session_response, user_permissions
 from app.core.state import login_attempts, mutation_lock
 from app.core.utils import fail, now
 from app.db.connection import database
 from app.modules.auth.schemas import Login
+from app.modules.auth.sessions import create_session, rotate_session, set_session_cookie, token_hash
 
 router = APIRouter()
+DUMMY_USER = {"password_hash": password_hash(secrets.token_urlsafe(32))}
+
 @router.post("/auth/login")
 def login(body: Login, request: Request, response: Response):
-    email = body.email.lower()
-    key = (request.client.host, email)
+    username = body.username
+    host = request.client.host if request.client else "unknown"
+    keys = [((host, username), 5), ((host, None), 30)]
     with mutation_lock:
         cutoff = time.monotonic() - 60
         for old_key in list(login_attempts):
@@ -24,22 +26,22 @@ def login(body: Login, request: Request, response: Response):
                 login_attempts[old_key].popleft()
             if not login_attempts[old_key]:
                 del login_attempts[old_key]
-        if len(login_attempts[key]) >= 5:
-            raise HTTPException(429, {"code": "RATE_LIMITED", "message": "Try again in a minute."}, headers={"Retry-After": "60"})
-        login_attempts[key].append(time.monotonic())
-    user = database.fetch_one("users", {"email": email})
-    salt = (user or {}).get("password_salt", "00" * 16)
-    if not user or not password_matches(body.password, user):
-        fail(401, "INVALID_CREDENTIALS", "Invalid email or password.")
+        for key, limit in keys:
+            if len(login_attempts[key]) >= limit:
+                raise HTTPException(429, {"code": "RATE_LIMITED", "message": "Try again in a minute."}, headers={"Retry-After": "60"})
+        for key, limit in keys:
+            login_attempts[key].append(time.monotonic())
+    user = database.fetch_one("users", {"username": username})
+    matches = password_matches(body.password, user or DUMMY_USER)
+    if not user or not matches:
+        fail(401, "INVALID_CREDENTIALS", "Invalid username or password.")
     if user.get("status") != "active":
         fail(403, "ACCOUNT_DEACTIVATED", "Account is not active.")
-    token = secrets.token_urlsafe(32)
-    old_token = request.cookies.get(COOKIE)
-    if old_token:
-        database.delete_record("admin_sessions", hashlib.sha256(old_token.encode()).hexdigest())
-    database.insert_record("admin_sessions", {"_id": hashlib.sha256(token.encode()).hexdigest(), "user_id": user["_id"], "expires_at": now() + timedelta(hours=8)})
-    database.update_record("users", user["_id"], {"last_login_at": now()})
-    response.set_cookie(COOKIE, token, max_age=28800, httponly=True, samesite="strict", secure=False, path="/")
+    if not user_permissions(user):
+        fail(403, "ADMIN_ACCESS_DENIED", "This account has no Admin permissions.")
+    token = create_session(user["_id"], request.cookies.get(COOKIE))
+    user = {**user, "last_login_at": now()}
+    set_session_cookie(response, token)
     return session_response(user)
 
 
@@ -49,14 +51,20 @@ def me(user=Depends(current_user)):
 
 
 @router.post("/auth/refresh", status_code=204)
-def refresh(user=Depends(current_user)):
-    return Response(status_code=204)
+def refresh(request: Request, user=Depends(current_user)):
+    token = rotate_session(request.cookies[COOKIE], user["_id"])
+    if not token:
+        fail(401, "UNAUTHENTICATED", "The session expired or was already renewed. Please sign in.")
+    response = Response(status_code=204)
+    set_session_cookie(response, token)
+    return response
 
 
 @router.post("/auth/logout", status_code=204)
 def logout(request: Request):
     token = request.cookies.get(COOKIE, "")
-    database.delete_record("admin_sessions", hashlib.sha256(token.encode()).hexdigest())
+    if token:
+        database.delete_record("admin_sessions", token_hash(token))
     response = Response(status_code=204)
-    response.delete_cookie(COOKIE, path="/", httponly=True, samesite="strict")
+    response.delete_cookie(COOKIE, path="/", httponly=True, samesite="strict", secure=COOKIE_SECURE)
     return response

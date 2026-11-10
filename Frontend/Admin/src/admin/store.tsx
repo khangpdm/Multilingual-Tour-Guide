@@ -1,12 +1,12 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { api, apiBase, ApiError, listAll } from './api'
-import { permissions, type Account, type AudioTask, type Audit, type Content, type Data, type Language, type Permission, type Poi, type Role, type Session, type Zone } from './types'
+import { permissions, type Capabilities, type Account, type AudioTask, type Audit, type Content, type Data, type Language, type Permission, type Poi, type Role, type Session, type Zone } from './types'
 
 export const stamp = () => new Date().toISOString()
 export const uid = (prefix: string) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`
 export const dateLabel = (value?: string | null) => value ? new Date(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—'
 export const poiName = (poi?: Poi) => poi?.content.vi?.name || 'Chưa có tên'
-export const emptyContent = (): Content => ({ name: '', address: '', description: '', text: '', audio_url: null, audio_sha256: null, audio_source: null, is_edited: false, updated_at: stamp() })
+export const emptyContent = (): Content => ({ name: '', address: '', description: '', introduction: '', text: '', audio_url: null, audio_sha256: null, audio_source: null, is_edited: false, updated_at: stamp() })
 export const activeTask = (task: AudioTask) => ['queued', 'processing'].includes(task.status)
 export function enqueue(data: Data, poi: Poi, locales: string[], actor: string, replace = false, retranslate = false): Data {
   const tasks = [...data.tasks]
@@ -36,7 +36,7 @@ function seed(): Data {
   }
 }
 type Mutation = { permission: Permission; path: string; method?: string; body?: unknown; action: string; target: string; before?: unknown; after?: unknown; demo: (data: Data) => Data }
-type Store = { localDatabase: boolean; tableCounts: Record<string, number>; data: Data; user: Account | null; mode: 'live' | 'demo'; ready: boolean; busy: boolean; error: string; streamStatus: string; can: (permission: Permission) => boolean; level: number; login: (email: string, password: string) => Promise<void>; logout: () => Promise<void>; enterDemo: () => void; switchRole: (role: string) => void; reload: () => Promise<void>; mutate: <T = unknown>(mutation: Mutation) => Promise<T | undefined> }
+type Store = { capabilities: Capabilities; localDatabase: boolean; tableCounts: Record<string, number>; data: Data; user: Account | null; mode: 'live' | 'demo'; ready: boolean; busy: boolean; error: string; streamStatus: string; can: (permission: Permission) => boolean; level: number; login: (username: string, password: string) => Promise<void>; logout: () => Promise<void>; enterDemo: () => void; switchRole: (role: string) => void; reload: () => Promise<void>; mutate: <T = unknown>(mutation: Mutation) => Promise<T | undefined> }
 const Context = createContext<Store | null>(null)
 export function AdminProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<Data>(emptyData)
@@ -78,35 +78,38 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; generation.current++ }
   }, [])
   useEffect(() => {
-    const expired = () => { generation.current++; setSession(null); setData(emptyData); setError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.') }
+    const expired = () => { generation.current++; setSession(null); setData(emptyData); setError('') }
     window.addEventListener('admin-session-expired', expired)
     return () => window.removeEventListener('admin-session-expired', expired)
   }, [])
   useEffect(() => {
     if (mode !== 'live' || !session || !(session.user.role_id === 'super_admin' || session.permissions.includes('audio.view_tasks'))) return
-    const stream = new EventSource(`${apiBase}/admin/audio-tasks/stream`, { withCredentials: true })
     let closed = false
-    let syncPending = false
-    const known = new Set(data.tasks.map(task => task.task_id))
-    setStreamStatus('Đang kết nối SSE…')
-    stream.onopen = () => setStreamStatus('Đang nhận cập nhật trực tiếp')
-    stream.onerror = () => setStreamStatus('Mất kết nối SSE; đang thử nối lại. Có thể dùng Tải lại dữ liệu.')
-    const snapshot = (event: MessageEvent) => { try { const incoming = JSON.parse(event.data).tasks as AudioTask[]; setData(current => ({ ...current, tasks: [...incoming, ...current.tasks.filter(task => !activeTask(task) && !incoming.some(item => item.task_id === task.task_id))] })) } catch { setError('Không đọc được cập nhật tác vụ. Hãy tải lại dữ liệu.') } }
-    const update = (event: MessageEvent) => {
+    let pending = false
+    let previous = ''
+    async function poll() {
+      if (pending || closed) return
+      pending = true
       try {
-        const incoming = JSON.parse(event.data) as Partial<AudioTask>
-        setData(current => ({ ...current, tasks: current.tasks.map(task => task.task_id === incoming.task_id ? { ...task, ...incoming } : task) }))
-        if (incoming.task_id && !known.has(incoming.task_id) && !syncPending) {
-          syncPending = true
-          void listAll<AudioTask>('/admin/audio-tasks').then(tasks => { if (!closed) { tasks.forEach(task => known.add(task.task_id)); setData(current => ({ ...current, tasks })) } }).catch(() => { if (!closed) setStreamStatus('Không tải được tác vụ mới. Hãy tải lại dữ liệu.') }).finally(() => { syncPending = false })
+        const tasks = await listAll<AudioTask>('/admin/audio-tasks')
+        if (closed) return
+        const signature = JSON.stringify(tasks.map(task => [task.task_id, task.status, task.progress]))
+        setData(current => ({ ...current, tasks }))
+        setStreamStatus('Tự cập nhật mỗi 3 giây')
+        if (previous && previous !== signature && tasks.some(task => task.status === 'completed')) {
+          const pois = await listAll<Poi>('/admin/pois')
+          if (!closed) setData(current => ({ ...current, pois }))
         }
-      } catch { setError('Không đọc được tiến độ tác vụ.') }
+        previous = signature
+      } catch { if (!closed) setStreamStatus('Không tải được tiến độ. Kiểm tra kết nối hoặc tải lại.') }
+      finally { pending = false }
     }
-    stream.addEventListener('snapshot', snapshot); stream.addEventListener('task_update', update)
-    return () => { closed = true; stream.close() }
+    void poll()
+    const timer = window.setInterval(() => void poll(), 3000)
+    return () => { closed = true; window.clearInterval(timer) }
   }, [mode, session])
   async function reload() { if (mode === 'live' && session) { setBusy(true); try { const current = await api<Session>('/admin/me/permissions'); setSession(current); await loadLive(current); setError('') } catch (reason) { setError((reason as Error).message) } finally { setBusy(false) } } }
-  async function login(email: string, password: string) { const current = await api<Session>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }); setMode('live'); setSession(current); setError(''); try { await loadLive(current) } catch (reason) { setError((reason as Error).message) } }
+  async function login(username: string, password: string) { const current = await api<Session>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }); setMode('live'); setSession(current); setError(''); try { await loadLive(current) } catch (reason) { setError((reason as Error).message) } }
   async function logout() { if (mode === 'live') await api('/auth/logout', { method: 'POST' }); generation.current++; setSession(null); setData(emptyData); setTableCounts({}); setMode('live'); setError('') }
   function enterDemo() {
     generation.current++
@@ -136,6 +139,6 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   }
   const levels: Record<string, number> = { super_admin: 3, admin: 2, poi_manager: 1 }
   const level = data.roles.find(role => role.role_id === session?.user.role_id)?.level ?? levels[session?.user.role_id ?? ''] ?? 0
-  return <Context.Provider value={{ localDatabase: mode === 'live' && session?.capabilities?.local_database === true, tableCounts, data, user: session?.user ?? null, mode, ready, busy, error, streamStatus, can, level, login, logout, enterDemo, switchRole, reload, mutate }}>{children}</Context.Provider>
+  return <Context.Provider value={{ capabilities: session?.capabilities || {}, localDatabase: mode === 'live' && session?.capabilities?.local_database === true, tableCounts, data, user: session?.user ?? null, mode, ready, busy, error, streamStatus, can, level, login, logout, enterDemo, switchRole, reload, mutate }}>{children}</Context.Provider>
 }
 export function useAdmin() { const context = useContext(Context); if (!context) throw new Error('AdminProvider is required'); return context }

@@ -8,6 +8,7 @@ from app.core.utils import audit, fail, get_record, identifier, now, public, upd
 from app.core.security import require
 from app.db.connection import database
 from app.modules.pois.schemas import ContentInput, PoiCreate, PoiFields, QrInput, Reason
+from app.modules.pois.readiness import readiness
 
 router = APIRouter()
 def poi_public(document):
@@ -19,6 +20,7 @@ def poi_public(document):
         longitude, latitude = location["coordinates"]
         document["location"] = {"lat": latitude, "lng": longitude}
     document["content_status"] = {language["_id"]: "ready" if document.get("content", {}).get(language["_id"], {}).get("audio_url") else "missing" for language in database.fetch_all("languages", {"is_active": True})}
+    document["readiness"] = readiness(document)
     return public(document)
 
 
@@ -56,7 +58,7 @@ def create_poi(body: PoiCreate, user=Depends(require("poi.create"))):
         if not database.fetch_one("languages", {"_id": locale, "is_active": True}):
             fail(422, "INVALID_LANGUAGE", "Choose an active language.")
     poi_id = identifier("poi")
-    document = {"_id": poi_id, "poi_id": poi_id, **body.model_dump(exclude={"content", "location"}), "location": {"type": "Point", "coordinates": [body.location.lng, body.location.lat]}, "content": {locale: content_document(content, locale) for locale, content in body.content.items()}, "status": "active", "qr_code": None, "images": [], "created_at": now(), "updated_at": now(), "last_modified_by": user["user_id"]}
+    document = {"_id": poi_id, "poi_id": poi_id, **body.model_dump(exclude={"content", "location"}), "location": {"type": "Point", "coordinates": [body.location.lng, body.location.lat]}, "content": {locale: content_document(content, locale) for locale, content in body.content.items()}, "status": "inactive", "qr_code": None, "images": [], "cover_image": None, "created_at": now(), "updated_at": now(), "last_modified_by": user["user_id"]}
     database.insert_record("pois", document)
     audit(user, "poi.create", poi_id, None, document)
     return {"poi": poi_public(document), "tasks_created": []}
@@ -78,13 +80,25 @@ def edit_content(poi_id: str, locale: str, body: ContentInput, user=Depends(requ
         if not re.fullmatch(r"[a-z]{2,3}(-[A-Z]{2})?", locale) or not database.fetch_one("languages", {"_id": locale, "is_active": True}):
             fail(422, "INVALID_LANGUAGE", "Choose an active language.")
         content = {**existing.get("content", {}).get(locale, {}), **body.model_dump(), "is_edited": locale != "vi", "updated_at": now()}
+        if content.get("audio_source") == "TTS" and body.text != existing.get("content", {}).get(locale, {}).get("text"):
+            content.update(audio_url=None, audio_sha256=None, audio_source=None)
         return poi_public(update_record("pois", poi_id, {"content." + locale: content, "last_modified_by": user["user_id"]}, user, "poi.content_edit"))
 
 
 
 def transition(poi_id, status, user, reason=None):
     with mutation_lock:
-        editable_poi(poi_id)
+        document = editable_poi(poi_id)
+        if status == "active":
+            validate_zone(document["zone_id"])
+            if not get_record("zones", document["zone_id"]).get("is_active"):
+                fail(422, "INACTIVE_ZONE", "Zone must be active before publishing.")
+            issues = readiness(document)["issues"]
+            if issues:
+                fail(422, "NOT_READY", "; ".join(issue["message"] for issue in issues))
+        if status == "archived":
+            with database.connection() as connection, connection.cursor() as cursor:
+                cursor.execute("UPDATE audio_tasks SET state='CANCELLED',finished_at=UTC_TIMESTAMP(3) WHERE poi_id=%s AND state IN ('QUEUED','PROCESSING')", (poi_id,))
         return poi_public(update_record("pois", poi_id, {"status": "inactive" if status == "archived" else status, "is_archived": status == "archived", "unpublish_reason": reason, "last_modified_by": user["user_id"]}, user, "poi." + status))
 
 

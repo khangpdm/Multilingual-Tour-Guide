@@ -1,10 +1,13 @@
-# Admin dashboard - API_SPEC integration
+# Admin dashboard
 
-The dashboard follows `D:/Seminar/md/API_SPEC.md`. That document is the API
-contract; `MONGODB_EXPRESS.md` is a database setup example, not a UI contract.
-In particular, POI status is `published | unpublished | archived`, not `active`.
+The dashboard uses the local FastAPI/MySQL API documented in `../../Backend/README.md`.
+POI status is `published | unpublished | archived`, not the storage values `active | inactive`.
+Some older screens target a broader API contract and remain unavailable with the local role.
 
 ## Run
+
+Install dependencies with `pnpm install` (the package manager declared in
+`package.json`); commit `pnpm-lock.yaml` when adding dependencies.
 
 Run `npm run dev` in this directory. Type-check with
 `node node_modules/typescript/bin/tsc --noEmit --incremental false` and build
@@ -21,17 +24,30 @@ HttpOnly, Secure, SameSite=Strict, refresh cookie Path=/auth, credentials allowe
 for the dashboard origin. Prefer same-origin or same-site hosting. Cross-site
 cookies will not work with SameSite=Strict. Never put secrets in VITE variables.
 
+## Notifications
+
+Sonner displays transient action feedback throughout the admin dashboard.
+All user-facing notifications use Vietnamese. The shared toaster places its close button on the right with the accessible label `Đóng thông báo`; content reserves space for the button, including inside dialogs. API validation returns Vietnamese field labels and reasons; network and non-JSON failures use Vietnamese fallbacks.
+Use `toast.success`, `toast.error`, or `toast.info` from `sonner` in action
+handlers, after the operation completes. The shared `AdminToaster` stays
+mounted across navigation, uses a five-second duration, and has a close button.
+`CrudDialog` temporarily moves its portal container into the native dialog's
+top layer so notifications remain visible and interactive without remounting.
+Keep persistent guidance, connection errors, and polling failures inline with
+`Notice`; background polling must not create repeated error toasts.
+
 ## Live mode
 
+- Sign in with a username, not an email. The local development seed is `admin` / `Admin123!`; change the seed password before deployment. Login sends `{ username, password }` to the backend. Email remains available for account contact/audit data.
 - Login, refresh, logout and invitation activation call `/auth/*`.
 - Session permissions come from `/admin/me/permissions`; tokens are never
   written to localStorage. Every mutation still requires backend authorization.
 - POIs support lifecycle transitions, Vietnamese source content, locale edits,
   MP3 uploads, TTS regeneration options, image upload/removal and server-issued QR.
-- Audio tasks use credentialed SSE snapshots/updates, retry and cancellation.
+- Audio tasks poll every three seconds and support retry/cancellation. Generation is enabled only when the backend reports a configured TTS adapter.
 - Users are invited, not manually activated. Email is immutable. Role assignment
   and deactivation enforce the UI's known role levels; the backend is authoritative.
-- Roles expose all 32 permissions in 9 groups and support custom roles.
+- The frontend groups permissions by feature; the local backend advertises only implemented permissions.
 - Languages protect Vietnamese; zones may be disabled without disabling POIs.
 - Reports use aggregate analytics endpoints, not raw event-list endpoints.
   Heatmap renders a coordinate plot (not a tiled street map) and the backend's
@@ -39,7 +55,10 @@ cookies will not work with SameSite=Strict. Never put secrets in VITE variables.
 - Audit supports date/actor/action/target filters and CSV/JSON export.
 - Phase-2 on-demand TTS and presence screens, OTP/reset-password routes, and a
   writable global settings screen are intentionally not exposed without APIs.
-- `description` is not sent: it exists only in the setup seed, not PoiContent.
+- `description` stores the short summary, `introduction` stores the full article, and `text` stores narration, independently per locale.
+- POIs use canonical categories, an explicit cover image, and ordered galleries. New records start unpublished; the Review/preview tab shows publication blockers and per-language completeness.
+- The QR tab shows the server-generated PNG, downloads it, and prints it with the POI name. Binary assets and offline actions require live mode.
+- The offline page creates versioned common/language ZIPs, displays sizes/checksums/build errors, and publishes or withdraws releases. It does not package map tiles or change Enduser code.
 
 ## Demo mode
 
@@ -71,17 +90,15 @@ last active Super Admin. Custom role levels require the roles lookup.
 
 The spec omits a daily audio-play timeseries endpoint, an admin configuration
 write endpoint, a raw telemetry list, and export IDs for top QR/visit rankings.
-The UI does not invent those endpoints. No manual offline-pack publish step is
-needed because manifests are generated dynamically.
+The UI does not invent analytics data. Offline manifests are now versioned snapshots with an explicit Admin publication step; see the backend README for the new local contract.
 
 ## Acceptance checklist
 
 1. Login/refresh/logout, expired session, invalid and expired invitation tokens.
 2. View-only roles cannot mutate; POI Manager cannot invite or regenerate audio.
-3. Create a POI with Vietnamese name/text, radius 10-200 m, then unpublish with
-   a reason, republish, and archive. Archived POIs remain read-only.
+3. Create an unpublished POI with Vietnamese content and radius 10-200 m. Add a cover image and MP3, check the preview, publish, unpublish with a reason, and archive. Incomplete publication must fail on both UI and API. Archived POIs remain read-only.
 4. Edit a locale, preserve uploaded audio, upload MP3 <=15 MB, regenerate with
-   explicit overwrite options; inspect SSE updates and duplicate-task handling.
+   explicit overwrite options; inspect polling updates and duplicate-task handling.
 5. Upload JPG/PNG/WebP <=5 MB, max 10 files, and remove an image.
 6. Generate/regenerate QR; previous code becomes invalid on the backend.
 7. Keep Vietnamese enabled, switch the default locale, and verify backfill/cancel.
@@ -90,5 +107,6 @@ needed because manifests are generated dynamically.
 10. Filter/export audit and each report, verify UTC+7, missing heatmap data and
     minimum five visits; verify hour trends reject ranges longer than 14 days.
 11. Check desktop/mobile navigation, dialogs, keyboard focus and empty/error states.
+12. Create an offline release, download common/language ZIPs, verify manifests and checksums, publish a new version and withdraw it. Editing source data before publication must reject the stale release. Unsupported legacy screens are not acceptance criteria for the local role.
 
 Existing legacy stylesheet optimizer warnings are independent of these screens.

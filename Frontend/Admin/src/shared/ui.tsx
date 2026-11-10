@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useAdmin } from '../admin/store'
-import { apiBase } from '../admin/api'
+import { apiBase, apiFetch, responseError } from '../admin/api'
 
 export function Heading({ title, detail, children }: { title: string; detail: string; children?: ReactNode }) { return <div className="page-heading"><div><p className="eyebrow">MULTILINGUAL TOUR GUIDE / QUẢN TRỊ</p><h1>{title}</h1><p className="page-subtitle">{detail}</p></div><div className="heading-actions">{children}</div></div> }
 export function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="field"><span>{label}</span>{children}</label> }
@@ -10,10 +10,20 @@ export function Notice({ children }: { children: ReactNode }) { return <p classN
 export function Empty({ text = 'Không có dữ liệu phù hợp.' }: { text?: string }) { return <div className="empty-note">{text}</div> }
 export function CrudDialog({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null)
-  useEffect(() => { const previous = document.activeElement as HTMLElement | null; dialog.current?.showModal(); return () => previous?.focus() }, [])
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null
+    const notifications = document.getElementById('admin-notifications')
+    const parent = notifications?.parentElement
+    dialog.current?.showModal()
+    if (notifications) dialog.current?.appendChild(notifications)
+    return () => {
+      if (notifications && parent) parent.appendChild(notifications)
+      previous?.focus()
+    }
+  }, [])
   return <dialog ref={dialog} className="crud-dialog native-dialog" onCancel={event => { event.preventDefault(); onClose() }} aria-label={title}><div className="crud-dialog-head"><h2>{title}</h2><button type="button" className="icon-button" aria-label="Đóng biểu mẫu" onClick={onClose}>×</button></div>{children}</dialog>
 }
-export function DemoNotice() { const { error, mode, busy, streamStatus, can, localDatabase } = useAdmin(); return <>{localDatabase && <Notice>Đang kết nối MySQL local. POI, nội dung, khu vực, ngôn ngữ và audit được lưu trong tourism_db; media, TTS, dịch tự động và offline pack chưa được bật.</Notice>}{mode === 'live' && can('audio.view_tasks') && <small className="admin-block" role="status">Audio: {streamStatus}</small>}{busy && <Notice>Đang đồng bộ dữ liệu…</Notice>}{error && <p className="admin-error" role="alert">{error}</p>}</> }
+export function DemoNotice() { const { error, mode, busy, streamStatus, can, localDatabase, capabilities } = useAdmin(); return <>{localDatabase && <details className="system-status"><summary>Thông tin kết nối hệ thống</summary><Notice>Đang kết nối MySQL local. Nội dung, ảnh, MP3 và gói offline được lưu trên máy chủ. {capabilities.tts ? 'TTS đã được cấu hình.' : 'TTS chưa cấu hình; có thể tải MP3 thủ công.'} Bản dịch được biên tập theo ngôn ngữ.</Notice></details>}{mode === 'live' && can('audio.view_tasks') && <small className="admin-block" role="status">Audio: {streamStatus}</small>}{busy && <Notice>Đang đồng bộ dữ liệu…</Notice>}{error && <p className="admin-error" role="alert">{error}</p>}</> }
 export function usePagination<T>(items: T[]) {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
@@ -27,10 +37,12 @@ export function downloadCsv(filename: string, rows: (string | number)[][]) {
   saveBlob(new Blob(['\uFEFF' + rows.map(row => row.map(quote).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' }), filename)
 }
 export async function downloadApi(path: string, filename: string) {
-  let response = await fetch(`${apiBase}${path}`, { credentials: 'include' })
-  if (response.status === 401) { const refresh = await fetch(`${apiBase}/auth/refresh`, { method: 'POST', credentials: 'include' }); if (refresh.ok) response = await fetch(`${apiBase}${path}`, { credentials: 'include' }) }
-  if (!response.ok) { if (response.status === 401) window.dispatchEvent(new Event('admin-session-expired')); const body = await response.json().catch(() => null); throw new Error(body?.error?.message || `Không tải được báo cáo (HTTP ${response.status}).`) }
-  saveBlob(await response.blob(), filename)
+  let response = await apiFetch(`${apiBase}${path}`, { credentials: 'include' })
+  if (response.status === 401) { const refresh = await apiFetch(`${apiBase}/auth/refresh`, { method: 'POST', credentials: 'include' }); if (refresh.ok) response = await apiFetch(`${apiBase}${path}`, { credentials: 'include' }) }
+  if (!response.ok) { if (response.status === 401) window.dispatchEvent(new Event('admin-session-expired')); const body = await response.json().catch(() => null); throw new Error(body?.error?.message || responseError(response.status)) }
+  let blob: Blob
+  try { blob = await response.blob() } catch { throw new Error('Không tải được tệp. Vui lòng kiểm tra kết nối và thử lại.') }
+  saveBlob(blob, filename)
 }
 const fieldNames: Record<string, string> = {
   poi_id: 'POI ID', name: 'Tên địa điểm', value: 'Số lượt', metric: 'Chỉ số',
