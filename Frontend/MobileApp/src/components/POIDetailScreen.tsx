@@ -3,7 +3,7 @@ import { Alert, Image, Linking, ScrollView, Text, TouchableOpacity, View } from 
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { CATEGORY_COLORS, formatDistance, haversineDistance, POIS } from '@/data/pois';
+import { CATEGORY_COLORS, formatDistance, haversineDistance } from '@/data/pois';
 import { useApp } from '@/store/AppContext';
 
 import {
@@ -16,7 +16,6 @@ import {
   IconVolume,
 } from './Icons';
 
-const LANGUAGES = ['vi', 'en', 'fr', 'ja', 'ko', 'zh'] as const;
 const SPEECH_RATES = [0.75, 1, 1.25, 1.5];
 
 interface Props {
@@ -40,11 +39,12 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
     setSpeechRate,
     downloads,
     setActiveTab,
+    pois,
   } = useApp();
 
   const [expanded, setExpanded] = useState(false);
 
-  const poi = POIS.find((item) => item.id === poiId);
+  const poi = pois.find((item) => item.id === poiId);
 
   const safeTop = Math.max(insets.top, 16) + 8;
 
@@ -63,11 +63,40 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
     );
   }
 
-  const name = poi.name[language] || poi.name.vi || 'Địa điểm';
-  const description = poi.description[language];
-  const script = poi.ttsScript[language];
+  const getName = () => {
+    if (!poi.name) return 'Địa điểm';
+    if (typeof poi.name === 'object') {
+      return (
+        (poi.name as any)[language] ||
+        (poi.name as any)['vi'] ||
+        Object.values(poi.name)[0] ||
+        'Địa điểm'
+      );
+    }
+    return poi.name;
+  };
 
-  const categoryColor = CATEGORY_COLORS[poi.category] || '#0D9488';
+  const getDescription = () => {
+    if (!poi.description) return '';
+    if (typeof poi.description === 'object') {
+      return (poi.description as any)[language] || (poi.description as any)['vi'] || '';
+    }
+    return poi.description;
+  };
+
+  const getScript = () => {
+    if (!poi.ttsScript) return getDescription();
+    if (typeof poi.ttsScript === 'object') {
+      return (poi.ttsScript as any)[language] || (poi.ttsScript as any)['vi'] || getDescription();
+    }
+    return poi.ttsScript;
+  };
+
+  const name = getName();
+  const description = getDescription();
+  const script = getScript();
+
+  const categoryColor = CATEGORY_COLORS[poi.category as keyof typeof CATEGORY_COLORS] || '#0D9488';
 
   const isCurrentPOI = playingPOIId === poi.id;
   const isCurrentPOIPlaying = isCurrentPOI && isPlaying;
@@ -79,7 +108,13 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
 
   const distance = haversineDistance(userLat, userLng, poi.lat, poi.lng);
 
-  const availableLanguages = LANGUAGES.filter((item) => poi.ttsScript[item]);
+  const targetObj =
+    typeof poi.ttsScript === 'object' && poi.ttsScript !== null ? poi.ttsScript : poi.description;
+
+  const availableLanguages =
+    targetObj && typeof targetObj === 'object'
+      ? Object.keys(targetObj).filter((lang) => Boolean((targetObj as any)[lang]))
+      : ['vi'];
 
   const downloadStatus = downloads[`q1-${language}`];
 

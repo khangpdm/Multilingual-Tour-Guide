@@ -7,7 +7,7 @@ from services.pois_service import to_iso, public_poi, get_active_languages, find
 router = APIRouter(prefix="/poi", tags=["POI"])
 
 
-@router.get("/poi/load-all")
+@router.get("/load-all")
 async def load_all_pois(
     request: Request,
     response: Response,
@@ -129,7 +129,7 @@ async def load_all_pois(
         )
 
 
-@router.get("/poi/hotset")
+@router.get("/hotset")
 async def get_hotset(
     request: Request,
     lat: float = Query(..., ge=-90, le=90),
@@ -192,7 +192,7 @@ async def get_hotset(
         )
 
 
-@router.get("/poi/{poi_id}")
+@router.get("/{poi_id}")
 async def get_poi_detail(
     poi_id: str,
     request: Request,
@@ -244,7 +244,7 @@ async def get_poi_detail(
         )
 
 
-@router.get("/poi/by-qr/{qr_code}")
+@router.get("/by-qr/{qr_code}")
 async def get_poi_by_qr(
     qr_code: str,
     request: Request,
