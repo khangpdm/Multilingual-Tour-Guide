@@ -1,6 +1,6 @@
 # Local Admin API
 
-The Admin dashboard uses MySQL in `tourism_db` and the relational tables in `app/db/admin_mysql.sql`. The schema is idempotent and creates only missing tables; it does not drop existing data. This is a local Admin API, not the complete production API specification.
+The Admin dashboard uses MySQL in `tourism_db` and the relational tables in `app/db/admin_mysql.sql`. The schema is idempotent and creates only missing tables; it does not drop existing data. This backend serves both the local Admin API and the Mobile API; it is not the complete production API specification.
 
 ## Configure
 
@@ -107,4 +107,11 @@ Startup adds `source_hash`, `error`, and `poi_count` to existing release tables.
 
 ## Local worker limits
 
-Run exactly one Uvicorn worker for this local implementation, without reload during active builds. Audio/pack work uses in-process background tasks and a process-local mutation lock. On restart, interrupted jobs become failed and must be retried or rebuilt. Multi-process deployment needs a durable queue and cross-process locking; do not scale this implementation as-is. Public Enduser content/manifest endpoints and mobile integration are intentionally not changed here.
+Run exactly one Uvicorn worker for this local implementation, without reload during active builds. Audio/pack work uses in-process background tasks and a process-local mutation lock. On restart, interrupted jobs become failed and must be retried or rebuilt. Multi-process deployment needs a durable queue and cross-process locking; do not scale this implementation as-is. Public Enduser content/manifest endpoints remain outside this local implementation.
+
+## Mobile API integration
+
+The same FastAPI app also serves the Mobile API routes: `GET /languages`, `/poi/poi/load-all`, telemetry endpoints, and static media at `/images` and `/audio`. These routes use the async MySQL pool configured by `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, and `MYSQL_DB_NAME`; Admin endpoints use the synchronous MySQL store with the same database settings. Both lifecycles start and stop with the app. Keep the mobile schema and Admin schema provisioned in the same database; startup does not drop existing data.
+
+The mobile media directories are `Backend/static/images` and `Backend/static/audio`. Admin uploads use `ADMIN_MEDIA_ROOT` (default `Backend/media`).
+
