@@ -1,8 +1,9 @@
 .app-shell { background: var(--background); }
 .sidebar { width: 230px; flex: 0 0 230px; background: #061720; border-right: 0; color: #fff; padding: 28px 16px 20px; }
-.sidebar-brand { color: #fff; gap: 10px; padding: 0 8px; margin-bottom: 30px; font-size: 20px; }
+.sidebar-brand { color: #fff; gap: 12px; padding: 0 8px; margin-bottom: 30px; font-size: 20px; align-items: center; }
 .sidebar-brand small { display: block; font-size: 8px; letter-spacing: .14em; color: #849ca9; margin-top: 5px; }
-.brand-mark { background: #23b4ec; color: #fff; border-radius: 8px; width: 32px; height: 32px; }
+.brand-mark { background: #ffffff; border-radius: 9px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; padding: 2px; overflow: hidden; flex-shrink: 0; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); }
+.brand-logo-img { width: 100%; height: 100%; object-fit: contain; }
 .workspace-switcher { display: none; }
 .nav-list { gap: 6px; }
 .nav-caption { color: #637e8e; margin-bottom: 12px; font-size: 9px; }
@@ -11,9 +12,14 @@
 .nav-active, .nav-active:hover { background: #263d49; color: #fff; }
 .nav-active svg { color: #3ec4f9; }
 .nav-active::before { display: none; }
-.sidebar .profile-row { border-color: #233742; padding-left: 5px; }
-.sidebar .profile-row p { max-width: 140px; overflow-wrap: anywhere; color: #e0ebf0; }
-.sidebar .profile-row span { color: #8299a7; }
+.sidebar .profile-row { display: flex; align-items: center; gap: 10px; border-color: #233742; padding: 16px 4px 0; }
+.sidebar .profile-info { flex: 1; min-width: 0; }
+.sidebar .profile-info p, .sidebar .profile-row p { max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #e0ebf0; margin: 0; }
+.sidebar .profile-info span, .sidebar .profile-row span { display: block; font-size: 10px; margin-top: 2px; color: #8299a7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar-logout-button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex-shrink: 0; margin-left: auto; border: 1px solid #233742; border-radius: 8px; background: #0f2430; color: #8fa5b4; cursor: pointer; transition: all 0.18s ease; }
+.sidebar-logout-button:hover:not(:disabled) { background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.4); color: #ff6b6b; transform: translateY(-1px); }
+.sidebar-logout-button:active:not(:disabled) { transform: translateY(0); }
+.sidebar-logout-button:disabled { opacity: 0.5; cursor: not-allowed; }
 .sidebar .text-button { color: #a3b6c0; padding: 14px 5px 0; }
 .profile-avatar { flex-shrink: 0; background: #d9f2fd; color: #0876a6; border-radius: 50%; width: 34px; height: 34px; font-size: 13px; }
 .topbar { height: 82px; gap: 24px; padding: 0 28px; background: #fff; box-shadow: none; }
@@ -85,7 +91,8 @@ table tbody tr:hover, table tbody tr:focus-within { transform: none; box-shadow:
 .auth-layout { width: min(490px, 100%); margin: 0 auto; }
 .auth-card { width: 100%; padding: 38px 40px 40px; border: 1px solid #ffffff36; border-radius: 20px; background: linear-gradient(135deg, #ffffff21, #ffffff0c); box-shadow: 0 24px 80px #00000040, inset 0 1px 0 #ffffff14; backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
 .auth-card-head { text-align: center; margin-bottom: 30px; }
-.auth-card-head .auth-icon { display: grid; place-items: center; width: 46px; height: 46px; margin: 0 auto 18px; border: 1px solid #ffffff3b; border-radius: 50%; background: #ffffff0d; color: #fff; }
+.auth-card-head .auth-icon { display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; margin: 0 auto 18px; border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 16px; background: #ffffff; padding: 4px; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25); }
+.auth-logo-img { width: 100%; height: 100%; object-fit: contain; }
 .auth-eyebrow { font-size: 9px; letter-spacing: .17em; color: #eee0e9; margin: 0 0 12px; }
 .auth-card-head h1 { font-size: 28px; font-weight: 600; letter-spacing: -.6px; margin: 0 0 10px; color: #fff; }
 .auth-card-head > p:last-child { color: #e1d7df; font-size: 12px; line-height: 1.7; margin: 0; }

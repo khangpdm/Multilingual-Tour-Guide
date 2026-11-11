@@ -6,7 +6,7 @@ import pymysql
 from pathlib import Path
 from pymysql.cursors import DictCursor
 from datetime import date
-from app.core.config import PERMISSIONS
+from app.core.config import MANAGEMENT_PERMISSIONS, PERMISSIONS
 
 
 class DuplicateRecordError(Exception):
@@ -253,8 +253,16 @@ class MySQLDatabase:
                 cur.execute("INSERT INTO roles (id,name,level,is_system) VALUES ('local_admin','Local database editor',2,TRUE)")
             for permission in PERMISSIONS:
                 cur.execute("INSERT IGNORE INTO permissions (id,domain) VALUES (%s,%s)", (permission, permission.split(".")[0]))
-                if new_local_role or cur.rowcount == 1:
+                if permission not in MANAGEMENT_PERMISSIONS and (new_local_role or cur.rowcount == 1):
                     cur.execute("INSERT IGNORE INTO role_permissions (role_id,permission_id) VALUES ('local_admin',%s)", (permission,))
+            cur.execute("SELECT level,is_system FROM roles WHERE id='super_admin'")
+            existing_super = cur.fetchone()
+            if existing_super and (existing_super["level"] != 3 or not existing_super["is_system"]):
+                raise RuntimeError("The reserved super_admin role conflicts with an existing custom role.")
+            if not existing_super:
+                cur.execute("INSERT INTO roles (id,name,level,is_system) VALUES ('super_admin','Super Admin',3,TRUE)")
+            for permission in PERMISSIONS:
+                cur.execute("INSERT IGNORE INTO role_permissions (role_id,permission_id) VALUES ('super_admin',%s)", (permission,))
 
     def _ensure_column(self, cursor, table, column, definition):
         cursor.execute(
