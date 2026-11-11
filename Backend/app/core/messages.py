@@ -1,6 +1,20 @@
 import re
 
 MESSAGES = {
+    "Record already exists or conflicts with related data.": "Dữ liệu đã tồn tại hoặc xung đột với dữ liệu liên quan.",
+    "Choose an Admin role.": "Vui lòng chọn một vai trò quản trị hợp lệ.",
+    "You cannot manage a role at or above your level.": "Bạn không được quản lý vai trò ngang cấp hoặc cao hơn.",
+    "Unknown or unavailable permission.": "Quyền không tồn tại hoặc chưa được backend hỗ trợ.",
+    "You cannot grant permissions you do not have.": "Bạn không thể cấp quyền mà mình không có.",
+    "Role ID is reserved or already exists.": "Mã vai trò đã tồn tại hoặc được dành riêng cho hệ thống.",
+    "This role cannot be modified.": "Không được sửa vai trò được bảo vệ hoặc vai trò của chính mình.",
+    "Invalid permission changes.": "Danh sách cấp và thu hồi quyền không hợp lệ.",
+    "The last active Super Admin must remain active.": "Không thể vô hiệu hóa hoặc hạ quyền Super Admin hoạt động cuối cùng.",
+    "You cannot change your own role.": "Bạn không được đổi vai trò của chính mình.",
+    "You cannot deactivate yourself.": "Bạn không được vô hiệu hóa chính mình.",
+    "Invitation is invalid, expired or already used.": "Lời mời không hợp lệ, đã hết hạn hoặc đã được sử dụng.",
+    "Password must contain letters and digits and at most 72 UTF-8 bytes.": "Mật khẩu phải có chữ và số, tối đa 72 byte UTF-8.",
+    "Enter a full name.": "Vui lòng nhập họ tên.",
     "Invalid username or password.": "Tên đăng nhập hoặc mật khẩu không đúng.",
     "Account is not active.": "Tài khoản đã bị vô hiệu hóa hoặc chưa được kích hoạt.",
     "This account has no Admin permissions.": "Tài khoản này không có quyền truy cập trang quản trị.",

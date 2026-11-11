@@ -14,6 +14,7 @@ from app.modules.zones.routes import router as zones_router
 from app.modules.media.routes import router as media_router
 from app.modules.audio.routes import router as audio_router
 from app.modules.offline.routes import router as offline_router
+from app.modules.management.routes import router as management_router
 
 app = FastAPI(title="Tour Guide Local Admin API", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=ORIGINS, allow_credentials=True, allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Content-Type"])
@@ -35,7 +36,7 @@ async def protect_writes(request: Request, call_next):
 @app.middleware("http")
 async def protect_auth_cache(request: Request, call_next):
     response = await call_next(request)
-    if request.url.path.startswith("/auth/") or request.url.path == "/admin/me/permissions":
+    if request.url.path.startswith(("/auth/", "/admin/")):
         response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
     return response
@@ -49,3 +50,4 @@ app.include_router(audit_router)
 app.include_router(media_router)
 app.include_router(audio_router)
 app.include_router(offline_router)
+app.include_router(management_router)
