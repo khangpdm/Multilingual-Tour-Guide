@@ -13,4 +13,6 @@ if not 300 <= SESSION_TTL_SECONDS <= 86400:
     raise RuntimeError("ADMIN_SESSION_TTL_SECONDS must be between 300 and 86400.")
 PERMISSIONS = ["poi.view", "poi.create", "poi.edit", "poi.delete", "poi.assign_qr", "content.unpublish", "content.restore", "system.manage_constants", "system.manage_languages", "audit.view"]
 PERMISSIONS += ["audio.view_tasks", "audio.trigger_regenerate", "audio.cancel_task", "audio.retry_task", "offline.view", "offline.manage", "offline.publish"]
+MANAGEMENT_PERMISSIONS = ["user.view", "user.create", "user.edit", "user.deactivate", "role.view", "role.create", "role.assign_permission"]
+PERMISSIONS += MANAGEMENT_PERMISSIONS
 MEDIA_ROOT = Path(settings.get("ADMIN_MEDIA_ROOT") or str(ROOT / "media")).resolve()

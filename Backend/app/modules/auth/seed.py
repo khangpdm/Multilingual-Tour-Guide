@@ -14,28 +14,31 @@ def seed_admin(reset_password=False):
     with database.connection() as connection, connection.cursor() as cursor:
         connection.begin()
         try:
-            cursor.execute("SELECT id,username,role_id,status FROM users WHERE username=%s FOR UPDATE", (credentials.username,))
+            cursor.execute("SELECT id,username,email,role_id,status FROM users WHERE username=%s FOR UPDATE", (credentials.username,))
             user = cursor.fetchone()
             assigned = False
             if not user:
-                cursor.execute("SELECT id,username,role_id,status FROM users WHERE email=%s FOR UPDATE", (email,))
+                cursor.execute("SELECT id,username,email,role_id,status FROM users WHERE email=%s FOR UPDATE", (email,))
                 user = cursor.fetchone()
                 if user and user["username"]:
                     raise RuntimeError("ADMIN_EMAIL already belongs to a different username. Choose a distinct seed email.")
                 assigned = bool(user)
-            if user and user["role_id"] != "local_admin":
-                raise RuntimeError("Seed account conflicts with a non-local-admin account; no account was changed.")
+            if user and (user["role_id"] not in {"local_admin", "super_admin"} or user["email"].lower() != email.lower()):
+                raise RuntimeError("Seed account identity or role conflicts; no account was changed.")
             if not user or reset_password:
                 if len(password) < 8 or len(password.encode()) > 72 or password == "replace_with_a_unique_password":
                     raise RuntimeError("ADMIN_PASSWORD must contain at least 8 characters and at most 72 UTF-8 bytes.")
                 hashed = password_hash(password)
             if not user:
                 user_id = identifier("user")
-                cursor.execute("INSERT INTO users (id,username,email,password_hash,full_name,role_id,status) VALUES (%s,%s,%s,%s,'Local Admin','local_admin','ACTIVE')", (user_id, credentials.username, email, hashed))
+                cursor.execute("INSERT INTO users (id,username,email,password_hash,full_name,role_id,status) VALUES (%s,%s,%s,%s,'Super Admin','super_admin','ACTIVE')", (user_id, credentials.username, email, hashed))
             else:
                 user_id = user["id"]
                 if assigned:
                     cursor.execute("UPDATE users SET username=%s WHERE id=%s", (credentials.username, user_id))
+                if user["role_id"] == "local_admin":
+                    cursor.execute("UPDATE users SET role_id='super_admin' WHERE id=%s", (user_id,))
+                    cursor.execute("DELETE FROM admin_sessions WHERE user_id=%s", (user_id,))
                 if reset_password:
                     cursor.execute("UPDATE users SET password_hash=%s,password_salt=NULL WHERE id=%s", (hashed, user_id))
                     cursor.execute("DELETE FROM admin_sessions WHERE user_id=%s", (user_id,))

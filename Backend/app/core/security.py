@@ -46,6 +46,8 @@ def user_permissions(user):
     role = database.fetch_one("roles", {"_id": user["role_id"]})
     if not role or role.get("level", 0) < 1:
         return []
+    if role["role_id"] == "super_admin" and role.get("is_system") and role["level"] == 3:
+        return list(PERMISSIONS)
     return [permission for permission in (role or {}).get("permissions", []) if permission in PERMISSIONS]
 
 
@@ -61,4 +63,4 @@ def require(permission):
 
 def session_response(user):
     fields = {"user_id", "username", "email", "full_name", "role_id", "status", "last_login_at", "created_at", "updated_at"}
-    return {"user": public({key: value for key, value in user.items() if key in fields}), "permissions": user_permissions(user), "capabilities": {"local_database": True, "media_uploads": True, "audio_tasks": True, "tts": bool(settings.get("TTS_ENDPOINT")), "offline_packs": True}}
+    return {"user": public({key: value for key, value in user.items() if key in fields}), "permissions": user_permissions(user), "capabilities": {"local_database": True, "media_uploads": True, "audio_tasks": True, "tts": bool(settings.get("TTS_ENDPOINT")), "offline_packs": True, "permission_catalog": list(PERMISSIONS)}}

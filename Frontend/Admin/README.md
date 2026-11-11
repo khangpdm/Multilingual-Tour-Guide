@@ -2,7 +2,7 @@
 
 The dashboard uses the local FastAPI/MySQL API documented in `../../Backend/README.md`.
 POI status is `published | unpublished | archived`, not the storage values `active | inactive`.
-Some older screens target a broader API contract and remain unavailable with the local role.
+The seed Super Admin can manage accounts and roles. Analytics and other screens without local APIs remain unavailable.
 
 ## Run
 
@@ -45,9 +45,9 @@ Keep persistent guidance, connection errors, and polling failures inline with
 - POIs support lifecycle transitions, Vietnamese source content, locale edits,
   MP3 uploads, TTS regeneration options, image upload/removal and server-issued QR.
 - Audio tasks poll every three seconds and support retry/cancellation. Generation is enabled only when the backend reports a configured TTS adapter.
-- Users are invited, not manually activated. Email is immutable. Role assignment
+- Users are invited, not manually activated. Local invitations return a username and one-use activation link for private manual delivery; the application does not send email. Email is immutable. Role assignment
   and deactivation enforce the UI's known role levels; the backend is authoritative.
-- The frontend groups permissions by feature; the local backend advertises only implemented permissions.
+- The frontend groups permissions by feature and filters the live editor by `capabilities.permission_catalog`. The seed Super Admin has all implemented permissions; unavailable analytics/heatmap APIs are not shown as working features.
 - Languages protect Vietnamese; zones may be disabled without disabling POIs.
 - Reports use aggregate analytics endpoints, not raw event-list endpoints.
   Heatmap renders a coordinate plot (not a tiled street map) and the backend's

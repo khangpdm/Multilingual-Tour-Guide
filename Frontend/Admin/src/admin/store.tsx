@@ -49,10 +49,10 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   const [streamStatus, setStreamStatus] = useState('Chưa kết nối')
   const mutationLock = useRef(false)
   const generation = useRef(0)
-  const can = (permission: Permission) => Boolean(session && (session.user.role_id === 'super_admin' || session.permissions.includes(permission)))
+  const can = (permission: Permission) => Boolean(session && ((mode === 'demo' && session.user.role_id === 'super_admin') || session.permissions.includes(permission)))
   async function loadLive(current: Session) {
     const requestGeneration = ++generation.current
-    const allowed = (permission: Permission) => current.user.role_id === 'super_admin' || current.permissions.includes(permission)
+    const allowed = (permission: Permission) => current.permissions.includes(permission)
     const next: Data = { ...emptyData }
     let nextTableCounts: Record<string, number> = {}
     const jobs: Promise<void>[] = []

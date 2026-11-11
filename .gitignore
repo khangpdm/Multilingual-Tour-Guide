@@ -1,0 +1,23 @@
+# Dependencies and generated output
+node_modules/
+.pnpm-store/
+.venv/
+__pycache__/
+*.py[cod]
+.expo/
+Frontend/Admin/dist/
+Frontend/MobileApp/dist/
+Frontend/MobileApp/expo-env.d.ts
+*.tsbuildinfo
+
+# Local configuration, secrets and logs
+.env
+.env.*
+!.env.example
+!.env.*.example
+!.env.template
+.idea/
+.logs/
+*.log
+.DS_Store
+Thumbs.db
