@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import asyncmy
 from dotenv import load_dotenv
 from fastapi import FastAPI
-from services.audio_worker import process_audio_tasks_loop
+from app.services.audio_worker import process_audio_tasks_loop
 import asyncio
 
 load_dotenv()

@@ -2,7 +2,7 @@ from uuid import UUID
 from datetime import datetime, timezone, timedelta
 import time
 from collections import defaultdict
-from services.utils import utc_now
+from app.services.utils import utc_now
 
 from fastapi import (
     HTTPException,
