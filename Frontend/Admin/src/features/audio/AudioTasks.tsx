@@ -1,0 +1,23 @@
+import { toast } from 'sonner'
+import { useState, type FormEvent } from 'react'
+import { activeTask, dateLabel, enqueue, poiName, stamp, uid, useAdmin } from '../../admin/store'
+import { permissionGroups, type Account, type AudioTask, type Audit, type Language, type Permission, type Role } from '../../admin/types'
+import { api } from '../../admin/api'
+import { CrudDialog, downloadApi, downloadCsv, Empty, Field, Heading, saveBlob, Status, usePagination } from '../../shared/ui'
+
+export function AudioTasks() {
+  const { data, can, mutate, busy, mode } = useAdmin()
+  const [status, setStatus] = useState('')
+  const [locale, setLocale] = useState('')
+  const [poiId, setPoiId] = useState('')
+
+  const pagination = usePagination(data.tasks.filter(task => (!status || task.status === status) && (!locale || task.language_code === locale) && (!poiId || task.poi_id === poiId)).sort((first, second) => second.created_at.localeCompare(first.created_at)))
+  async function change(task: AudioTask, retry: boolean) {
+    if (!retry && !window.confirm('Hủy tác vụ này? Kết quả đang xử lý sẽ bị bỏ.')) return
+    try {
+      if (retry && data.tasks.some(other => other.task_id !== task.task_id && other.poi_id === task.poi_id && other.language_code === task.language_code && activeTask(other))) throw new Error('Đã có tác vụ đang hoạt động cho POI/ngôn ngữ này.')
+      await mutate({ permission: retry ? 'audio.retry_task' : 'audio.cancel_task', path: `/admin/audio-tasks/${task.task_id}/${retry ? 'retry' : 'cancel'}`, action: retry ? 'audio.retry_task' : 'audio.cancel_task', target: task.task_id, before: { status: task.status }, after: { status: retry ? 'queued' : 'cancelled' }, demo: current => ({ ...current, tasks: current.tasks.map(item => item.task_id === task.task_id ? { ...item, status: retry ? 'queued' : 'cancelled', retry_count: retry ? 0 : item.retry_count, progress: retry ? 0 : item.progress, error: retry ? null : item.error, started_at: retry ? null : item.started_at, finished_at: retry ? null : stamp() } : item) }) }); toast.success(retry ? 'Đã xếp hàng lại, số lần thử lại tăng thêm 1.' : 'Đã hủy tác vụ.')
+    } catch (error) { toast.error((error as Error).message) }
+  }
+  return <><Heading title="Tác vụ audio" detail={mode === 'live' ? 'Tự cập nhật tiến độ mỗi 3 giây. Tác vụ lỗi có thể thử lại.' : 'Theo dõi trạng thái và tiến độ xử lý audio.'} /><section className="panel"><div className="filter-row"><select className="select-control" aria-label="Trạng thái tác vụ" value={status} onChange={event => setStatus(event.target.value)}><option value="">Tất cả trạng thái</option>{['queued', 'processing', 'completed', 'failed', 'cancelled'].map(value => <option key={value}>{value}</option>)}</select><select className="select-control" aria-label="Ngôn ngữ tác vụ" value={locale} onChange={event => setLocale(event.target.value)}><option value="">Tất cả ngôn ngữ</option>{[...new Set(data.tasks.map(task => task.language_code))].map(value => <option key={value}>{value}</option>)}</select><input className="select-control" aria-label="Lọc POI ID" placeholder="POI ID" value={poiId} onChange={event => setPoiId(event.target.value)} /></div><div className="table-wrap"><table><thead><tr><th>POI / Ngôn ngữ</th><th>Trạng thái</th><th>Tiến độ</th><th>Thông tin</th><th /></tr></thead><tbody>{pagination.rows.map(task => <tr key={task.task_id}><td>{data.pois.some(poi => poi.poi_id === task.poi_id) ? poiName(data.pois.find(poi => poi.poi_id === task.poi_id)) : task.poi_id}<small className="admin-block">{task.language_code} · {task.task_id}</small></td><td><Status value={task.status} /></td><td><progress max="100" value={task.progress} aria-label="Tiến độ" /><small>{task.progress}% · Retry {task.retry_count}</small></td><td><small>Tạo: {dateLabel(task.created_at)}<br />Bắt đầu: {dateLabel(task.started_at)}<br />Kết thúc: {dateLabel(task.finished_at)}<br />Người tạo: {task.created_by || 'On-demand (GĐ2)'}</small>{task.error && <p className="admin-error">{task.error}</p>}</td><td>{['failed', 'cancelled'].includes(task.status) && can('audio.retry_task') && <button className="text-button" disabled={busy} onClick={() => void change(task, true)}>Thử lại</button>}{activeTask(task) && can('audio.cancel_task') && <button className="text-button" disabled={busy} onClick={() => void change(task, false)}>Hủy</button>}</td></tr>)}</tbody></table></div>{!pagination.rows.length && <Empty />}{pagination.controls}</section></>
+}

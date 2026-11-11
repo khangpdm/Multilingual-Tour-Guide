@@ -2,8 +2,9 @@ from fastapi import APIRouter, Response, Request, Query, Header, HTTPException
 from datetime import datetime, timezone
 from typing import Optional
 import hashlib
-from services.utils import utc_now
-from services.pois_service import to_iso, public_poi, get_active_languages, find_active_poi
+
+from app.services.utils import utc_now
+from app.services.pois_service import to_iso, public_poi, get_active_languages, find_active_poi
 router = APIRouter(prefix="/poi", tags=["POI"])
 
 

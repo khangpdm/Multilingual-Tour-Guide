@@ -1,5 +1,9 @@
 from uuid import UUID
 from services.utils import utc_now
+from datetime import datetime, timezone, timedelta
+import time
+from collections import defaultdict
+from app.services.utils import utc_now
 
 from fastapi import (
     APIRouter,
@@ -12,6 +16,7 @@ from fastapi import (
 from api.schemas.schemas import TelemetryEventRequest, POIVisitRequest
 from services.utils import get_active_languages
 from services.telemetry_service import check_rate_limit, normalize_datetime, poi_exists, zone_exists
+from app.api.schemas.schemas import TelemetryEventRequest, POIVisitRequest
 
 router = APIRouter(prefix="/telemetry", tags=["Telemetry"])
 
