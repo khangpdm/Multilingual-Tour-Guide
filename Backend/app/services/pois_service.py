@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
+from fastapi import HTTPException, Request
 
 def to_iso(value):
     if value is None:
@@ -12,11 +13,18 @@ def to_iso(value):
         ).replace("+00:00","Z")
     return value
 
+async def get_active_languages(db_pool) -> set[str]:
+    query = "SELECT code FROM languages WHERE is_active = TRUE;"
+    
+    async with db_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(query)
+            rows = await cursor.fetchall()
+            return {row[0] for row in rows}
+    
 def public_poi(document: dict, active_languages: set[str],
                requested_languages: Optional[set[str]] = None) -> dict:
-    """
-    Format dữ liệu POI từ MySQL row/dict sang chuẩn PoiPublic (mục 2.4 của spec)
-    """
+    
     poi_id = document.get("poi_id")
     location = document.get("location", {"lat": 0.0, "lng": 0.0})
     
@@ -48,19 +56,8 @@ def public_poi(document: dict, active_languages: set[str],
         "updated_at": to_iso(document.get("updated_at")),
     }
 
-async def get_active_languages(pool) -> set[str]:
-    """Lấy danh sách các mã ngôn ngữ đang active từ MySQL"""
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cursor:
-            await cursor.execute("SELECT code FROM languages WHERE is_active = 1")
-            rows = await cursor.fetchall()
-            return {row[0] for row in rows}
-
 async def find_active_poi(pool, field: str, value: str) -> Optional[Dict[str, Any]]:
-    """
-    Tìm một POI active theo field (ví dụ: 'id' hoặc 'qr_code') 
-    kèm theo toàn bộ nội dung (content) từ bảng poi_content.
-    """
+    
     if field not in {"id", "qr_code"}:
         raise ValueError("Invalid field for POI lookup")
 
@@ -87,11 +84,11 @@ async def find_active_poi(pool, field: str, value: str) -> Optional[Dict[str, An
                 "status": poi_row[3],
                 "geofence_radius_m": poi_row[4],
                 "qr_code": poi_row[5],
-                "images": poi_row[6] if isinstance(poi_row[6], list) else [], # Hoặc xử lý JSON decode nếu cần
+                "images": poi_row[6] if isinstance(poi_row[6], list) else [],
                 "updated_at": poi_row[7],
                 "location": {
-                    "lng": poi_row[8],
-                    "lat": poi_row[9]
+                    "lng": poi_row[9],
+                    "lat": poi_row[8]
                 }
             }
 

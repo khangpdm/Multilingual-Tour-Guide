@@ -1,5 +1,6 @@
 import { IconClose, IconPlay } from '@/components/Icons';
-import { CATEGORY_COLORS, formatDistance, haversineDistance, POI } from '@/data/pois';
+import { CATEGORY_COLORS, formatDistance, haversineDistance } from '@/data/pois';
+import { POI } from '@/services/poiService';
 import React from 'react';
 import { Image, Text, TouchableOpacity, View } from 'react-native';
 
@@ -52,7 +53,8 @@ export default function PreviewPOI({
               <View
                 className="mt-1 self-start rounded-full px-2 py-0.5"
                 style={{
-                  backgroundColor: CATEGORY_COLORS[selectedPOI.category] || '#0D9488',
+                  backgroundColor:
+                    (CATEGORY_COLORS as Record<string, string>)[selectedPOI.category] || '#0D9488',
                 }}
               >
                 <Text className="text-[10px] font-semibold text-white">{selectedPOI.category}</Text>

@@ -1,4 +1,6 @@
 import { DEMO_USER_LOCATIONS, LANG_TO_SPEECH, Language, POIS } from '@/data/pois';
+import { fetchActiveLanguages, LanguageItem } from '@/services/languageService';
+import { fetchPOIs, POI } from '@/services/poiService';
 import { useRouter } from 'expo-router';
 import * as Speech from 'expo-speech';
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
@@ -25,8 +27,11 @@ interface AppContextValue {
   setUserLocation: (lat: number, lng: number) => void;
   selectedMapPOIId: string | null;
   setSelectedMapPOIId: (id: string | null) => void;
+  pois: POI[];
+  setPoiList: (pois: POI[]) => void;
 
   // Language
+  supportedLanguages: LanguageItem[];
   language: Language;
   setLanguage: (language: Language) => void;
   langMenuOpen: boolean;
@@ -94,6 +99,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [activeTab, setActiveTab] = useState<Tab>('home');
 
   // Language
+  const [supportedLanguages, setSupportedLanguages] = useState<LanguageItem[]>([
+    { code: 'vi', name: 'Tiếng Việt', flag: '🇻🇳' },
+    { code: 'en', name: 'English', flag: '🇺🇸' },
+  ]);
   const [language, setLanguage] = useState<Language>('vi');
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [autoPlay, setAutoPlay] = useState(true);
@@ -367,6 +376,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [speechRate, setSpeechRate] = useState(1.0);
   const [isPlaying, setIsPlaying] = useState(false);
 
+  useEffect(() => {
+    async function loadLanguages() {
+      const langs = await fetchActiveLanguages();
+      if (langs.length > 0) {
+        setSupportedLanguages(langs);
+      }
+    }
+    loadLanguages();
+  }, []);
+
+  const [pois, setPoiList] = useState<POI[]>(POIS);
+
+  useEffect(() => {
+    async function loadPOIsFromServer() {
+      const serverPOIs = await fetchPOIs();
+      if (serverPOIs && serverPOIs.length > 0) {
+        setPoiList(serverPOIs);
+      }
+    }
+    loadPOIsFromServer();
+  }, []);
+
   return (
     <AppContext.Provider
       value={{
@@ -383,8 +414,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setUserLocation,
         selectedMapPOIId,
         setSelectedMapPOIId,
+        pois,
+        setPoiList,
 
         // Language & Settings
+        supportedLanguages,
         language,
         setLanguage,
         langMenuOpen,

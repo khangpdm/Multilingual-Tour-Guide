@@ -10,3 +10,7 @@ mutagen>=1.47,<2
 motor>=3.6,<4
 pydantic-settings>=2,<3
 asyncmy>=0.2,<1
+
+cryptography
+edge-tts 
+deep-translator

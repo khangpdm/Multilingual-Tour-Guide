@@ -36,3 +36,8 @@ class POIVisitRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     visits: list[POIVisit] = Field(min_length=1)
+
+
+class SynthesizeRequest(BaseModel):
+    poi_id: str
+    target_locale: str = Field(..., description="Mã ngôn ngữ mục tiêu, ví dụ: 'ja', 'en'")

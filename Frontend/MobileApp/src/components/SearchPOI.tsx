@@ -1,5 +1,6 @@
 import { IconClose, IconSearch } from '@/components/Icons';
-import { formatDistance, haversineDistance, POI } from '@/data/pois';
+import { formatDistance, haversineDistance } from '@/data/pois';
+import { POI } from '@/services/poiService';
 import React from 'react';
 import {
   Image,

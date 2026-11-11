@@ -1,25 +1,20 @@
 import { IconChevronDown } from '@/components/Icons';
 import Mapsection from '@/components/MapSection';
 import SearchPOI from '@/components/SearchPOI';
-import { POIS, haversineDistance } from '@/data/pois';
+import { haversineDistance } from '@/data/pois';
 import { useApp } from '@/store/AppContext';
 import { useMemo, useState } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
+import LanguageModal from './components/LanguageModal';
 import NearbyPOI from './components/NearbyPOI';
 import PreviewPOI from './components/PreviewPOI';
 
-const LANGS = [
-  { code: 'vi' as const, flag: '🇻🇳', name: 'Tiếng Việt' },
-  { code: 'en' as const, flag: '🇺🇸', name: 'English' },
-  { code: 'fr' as const, flag: '🇫🇷', name: 'Français' },
-  { code: 'ja' as const, flag: '🇯🇵', name: '日本語' },
-  { code: 'ko' as const, flag: '🇰🇷', name: '한국어' },
-  { code: 'zh' as const, flag: '🇨🇳', name: '中文' },
-];
-
 export default function HomeScreen() {
   const {
+    pois,
+    supportedLanguages,
     language,
+    setLanguage,
     homeSearch,
     setHomeSearch,
     selectedMapPOIId,
@@ -32,30 +27,43 @@ export default function HomeScreen() {
   } = useApp();
 
   const [searchOpen, setSearchOpen] = useState(false);
+  const [langModalVisible, setLangModalVisible] = useState(false);
 
-  const currentLang = LANGS.find((l) => l.code === language);
+  const currentLang = useMemo(() => {
+    return (
+      supportedLanguages.find((l) => l.code === language) || {
+        code: language,
+        flag: '🌐',
+        name: language.toUpperCase(),
+      }
+    );
+  }, [supportedLanguages, language]);
 
   const nearbyPOIs = useMemo(() => {
-    return POIS.filter(
+    return pois.filter(
       (p) => haversineDistance(userLat, userLng, p.lat, p.lng) <= activationRadius
     );
-  }, [userLat, userLng, activationRadius]);
+  }, [userLat, userLng, activationRadius, pois]);
 
   const selectedPOI = useMemo(() => {
     if (!selectedMapPOIId) return null;
-    return POIS.find((p) => p.id === selectedMapPOIId) || null;
-  }, [selectedMapPOIId]);
+    return pois.find((p) => p.id === selectedMapPOIId) || null;
+  }, [selectedMapPOIId, pois]);
 
   const searchResults = useMemo(() => {
     if (!homeSearch.trim()) return [];
     const query = homeSearch.toLowerCase().trim();
-    return POIS.filter((p) => {
-      const name =
-        typeof p.name === 'object' ? p.name[language as keyof typeof p.name] || p.name.vi : p.name;
+    return pois.filter((p) => {
+      let name = '';
+      if (typeof p.name === 'object' && p.name !== null) {
+        name = p.name[language] || p.name.vi || '';
+      } else if (typeof p.name === 'string') {
+        name = p.name;
+      }
       const address = p.address || '';
       return name.toLowerCase().includes(query) || address.toLowerCase().includes(query);
     });
-  }, [homeSearch, language]);
+  }, [homeSearch, language, pois]);
 
   return (
     <View className="flex-1 bg-white">
@@ -65,13 +73,22 @@ export default function HomeScreen() {
 
         <TouchableOpacity
           activeOpacity={0.7}
+          onPress={() => setLangModalVisible(true)}
           className="flex-row items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1.5"
         >
-          <Text>{currentLang?.flag}</Text>
+          <Text>{currentLang.flag}</Text>
           <Text className="text-xs font-semibold uppercase text-gray-700">{language}</Text>
           <IconChevronDown size={12} color="#6B7280" />
         </TouchableOpacity>
       </View>
+
+      <LanguageModal
+        visible={langModalVisible}
+        onClose={() => setLangModalVisible(false)}
+        supportedLanguages={supportedLanguages}
+        currentLanguage={language}
+        onSelectLanguage={(code) => setLanguage(code as any)}
+      />
 
       {/* SEARCH BAR & OVERLAY RESULTS */}
       <SearchPOI
@@ -89,7 +106,6 @@ export default function HomeScreen() {
       <View className="relative flex-1">
         <Mapsection onMapTouch={() => setSearchOpen(false)} />
 
-        {/* POIS Ở GẦN */}
         {!selectedPOI && (
           <NearbyPOI
             nearbyPOIs={nearbyPOIs}
@@ -100,7 +116,6 @@ export default function HomeScreen() {
           />
         )}
 
-        {/* POI BOTTOM SHEET PREVIEW */}
         {selectedPOI && (
           <PreviewPOI
             selectedPOI={selectedPOI}

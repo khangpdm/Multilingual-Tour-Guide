@@ -42,6 +42,8 @@ app.add_middleware(
 install_exception_handlers(app)
 
 
+app.mount("/images", StaticFiles(directory="static/images"), name="images")
+app.mount("/static/audio", StaticFiles(directory="static/audio"), name="audio")
 @app.middleware("http")
 async def protect_admin_writes(request: Request, call_next):
     if request.url.path.startswith(("/auth/", "/admin/")) and request.method in {"POST", "PUT", "DELETE", "PATCH"}:
@@ -76,6 +78,7 @@ app.include_router(auth_router)
 app.include_router(zones_router)
 app.include_router(languages_router)
 app.include_router(pois_router)
+app.include_router(audio_router)
 app.include_router(audit_router)
 app.include_router(media_router)
 app.include_router(audio_router)

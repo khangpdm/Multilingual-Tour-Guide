@@ -1,6 +1,4 @@
-import { POIS } from '@/data/pois';
 import { useApp } from '@/store/AppContext';
-import { CategoryOption } from '@/types/map';
 import Mapbox, {
   Camera,
   CircleLayer,
@@ -23,13 +21,6 @@ if (MAPBOX_TOKEN) {
   Mapbox.setAccessToken(MAPBOX_TOKEN);
 }
 
-const CATEGORIES: CategoryOption[] = [
-  { id: 'all', label: 'Tất cả' },
-  { id: 'Bảo tàng', label: 'Bảo tàng' },
-  { id: 'Tôn giáo', label: 'Tôn giáo' },
-  { id: 'Công viên', label: 'Công viên' },
-];
-
 interface MapsectionProps {
   onMapTouch?: () => void;
 }
@@ -39,15 +30,14 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
 
   const {
     language,
-    selectedMapPOIId,
     setSelectedMapPOIId,
     selectedCategory,
-    setSelectedCategory,
     setUserLocation,
     hasFollowed,
     setHasFollowed,
     userCoordinates,
     setUserCoordinates,
+    pois,
   } = useApp();
 
   useEffect(() => {
@@ -56,16 +46,18 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
 
   const poiGeoJSON = useMemo<GeoJSON.FeatureCollection>(() => {
     const filteredPois =
-      selectedCategory === 'all' ? POIS : POIS.filter((p) => p.category === selectedCategory);
+      selectedCategory === 'all' || selectedCategory === 'Tất cả'
+        ? pois
+        : pois.filter((p) => p.category === selectedCategory);
 
     return {
       type: 'FeatureCollection',
-      features: POIS.map((poi) => ({
+      features: filteredPois.map((poi) => ({
         type: 'Feature',
         id: poi.id,
         geometry: {
           type: 'Point',
-          coordinates: [poi.lng, poi.lat],
+          coordinates: [Number(poi.lng) || 0, Number(poi.lat) || 0],
         },
         properties: {
           id: poi.id,
@@ -74,7 +66,7 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
         },
       })),
     };
-  }, [selectedCategory, language]);
+  }, [selectedCategory, language, pois]);
 
   const handleUserLocationUpdate = (location: Mapbox.Location) => {
     if (location?.coords) {
@@ -201,7 +193,7 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
               textHaloWidth: 1.5,
               textAllowOverlap: true,
             }}
-          ></SymbolLayer>
+          />
         </ShapeSource>
       </MapView>
 
