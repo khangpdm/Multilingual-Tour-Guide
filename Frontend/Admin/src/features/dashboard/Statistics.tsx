@@ -22,7 +22,7 @@ function Progress({ label, value, total, color }: { label: string; value: number
 }
 
 export function Statistics() {
-  const { data, can, busy } = useAdmin()
+  const { data, can, busy, tableCounts } = useAdmin()
   const [months, setMonths] = useState(6)
   const chartId = useId().replace(/:/g, '')
   const viewPois = can('poi.view')
@@ -46,7 +46,7 @@ export function Statistics() {
   const monthAudio = data.tasks.filter(task => task.status === 'completed' && monthKey(task.finished_at) === thisMonth).length
   const cards = [
     { label: 'Tổng địa điểm', value: data.pois.length, note: `${newPois} địa điểm tạo trong tháng`, icon: MapPin, tone: 'peach', visible: viewPois },
-    { label: 'Đang công khai', value: published.length, note: `${pois.length - published.length} địa điểm chưa công khai`, icon: Radio, tone: 'mint', visible: viewPois },
+    { label: 'Sự kiện analytics', value: tableCounts.analytics_events ?? 0, note: 'Số dòng trong bảng analytics_events', icon: Radio, tone: 'mint', visible: viewPois },
     { label: 'Khu vực hoạt động', value: data.zones.filter(zone => zone.is_active).length, note: `${data.zones.length} khu vực trong hệ thống`, icon: Layers, tone: 'lilac', visible: viewPois },
     { label: 'Ngôn ngữ đang bật', value: activeLanguages.length, note: `${data.languages.length} ngôn ngữ đã cấu hình`, icon: Globe, tone: 'sand', visible: viewPois },
     { label: 'Kịch bản thuyết minh', value: textCount, note: 'Trên ngôn ngữ đang bật', icon: FileText, tone: 'blue', visible: viewPois },
