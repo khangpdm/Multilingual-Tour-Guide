@@ -1,9 +1,9 @@
 from fastapi import HTTPException, APIRouter, Request, Response, Header, Query, status
 from fastapi.responses import FileResponse
-from services.audio_service import resolve_safe_path
-from api.schemas.schemas import SynthesizeRequest
+from app.services.audio_service import resolve_safe_path
+from app.api.schemas.schemas import SynthesizeRequest
 from pathlib import Path
-from services.pois_service import get_active_languages
+from app.services.pois_service import get_active_languages
 import uuid
 import json
 from typing import Optional
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/audio", tags=["Audio Management"])
 
 AUDIO_ROOT_DIR = Path("/home/khangpham/Documents/Voice-Travel/Multilingual-Tour-Guide/Backend/static/audio")
 
-@router.post("/synthesize", status_code=202)
+@router.post("/synthesize")
 async def request_audio_synthesize(
     payload: SynthesizeRequest,
     request: Request,
