@@ -383,6 +383,26 @@ export function formatDistance(m: number): string {
   return `${(m / 1000).toFixed(1)} km`;
 }
 
+export const CATEGORY_LABELS: Record<string, string> = {
+  historical_site: 'Di tích',
+  museum: 'Bảo tàng',
+  religious: 'Tôn giáo',
+  architecture: 'Kiến trúc',
+  park: 'Công viên',
+  food: 'Ẩm thực',
+};
+
+export const CATEGORIES = ['Tất cả', ...Object.values(CATEGORY_LABELS)];
+
+export const CATEGORY_COLORS_BY_CODE: Record<string, string> = {
+  historical_site: '#7c3aed',
+  museum: '#b45309',
+  religious: '#dc2626',
+  architecture: '#1d4ed8',
+  park: '#15803d',
+  food: '#c2410c',
+};
+
 export const CATEGORY_COLORS: Record<Category, string> = {
   'Di tích': '#7c3aed',
   'Bảo tàng': '#b45309',

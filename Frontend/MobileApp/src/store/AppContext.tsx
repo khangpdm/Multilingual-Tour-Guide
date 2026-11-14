@@ -1,4 +1,4 @@
-import { DEMO_USER_LOCATIONS, LANG_TO_SPEECH, Language, POIS } from '@/data/pois';
+import { DEMO_USER_LOCATIONS, Language, POIS } from '@/data/pois';
 import { fetchActiveLanguages, LanguageItem } from '@/services/languageService';
 import { fetchPOIs, POI } from '@/services/poiService';
 import { useRouter } from 'expo-router';

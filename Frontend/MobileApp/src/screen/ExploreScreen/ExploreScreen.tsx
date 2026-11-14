@@ -1,11 +1,11 @@
 import { IconCheck, IconClose, IconSearch } from '@/components/Icons';
 import {
   CATEGORY_COLORS,
-  POIS,
   formatDistance,
   haversineDistance,
+  CATEGORY_LABELS,
+  CATEGORY_COLORS_BY_CODE,
   type Category,
-  type POI,
 } from '@/data/pois';
 import { useApp } from '@/store/AppContext';
 import React, { useMemo } from 'react';
@@ -21,6 +21,19 @@ const CATEGORIES = [
   'Ẩm thực',
 ];
 
+const getLocalizedText = (
+  value: Record<string, string | null> | string | undefined,
+  language: string
+): string => {
+  if (!value) return '';
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  return value[language] ?? value['en'] ?? '';
+};
+
 export default function ExploreScreen() {
   const {
     exploreSearch,
@@ -34,16 +47,26 @@ export default function ExploreScreen() {
     userLat,
     userLng,
     downloads,
+    pois,
   } = useApp();
 
   const filteredPOIs = useMemo(() => {
     const q = exploreSearch.trim().toLowerCase();
 
-    const list = POIS.filter((p) => {
-      const matchCat = exploreCategory === 'Tất cả' || p.category === exploreCategory;
-      const nameMatch = p.name[language]?.toLowerCase().includes(q);
+    const list = pois.filter((p) => {
+      const selectedCategoryCode = Object.keys(CATEGORY_LABELS).find(
+        (code) => CATEGORY_LABELS[code] === exploreCategory
+      );
+
+      const matchCat = exploreCategory === 'Tất cả' || p.category === selectedCategoryCode;
+
+      const name = getLocalizedText(p.name, language);
+      const nameMatch = name.toLowerCase().includes(q);
+
       const addressMatch = p.address?.toLowerCase().includes(q);
+
       const matchQ = !q || nameMatch || addressMatch;
+
       return matchCat && matchQ;
     });
 
@@ -54,16 +77,16 @@ export default function ExploreScreen() {
           haversineDistance(userLat, userLng, b.lat, b.lng)
         );
       }
-      return (a.name[language] ?? '').localeCompare(b.name[language] ?? '');
+      return getLocalizedText(a.name, language).localeCompare(getLocalizedText(b.name, language));
     });
-  }, [exploreCategory, exploreSearch, exploreSort, language, userLat, userLng]);
+  }, [pois, exploreCategory, exploreSearch, exploreSort, language, userLat, userLng]);
 
   const isDownloaded = (poiId: string) => {
     const pkg = `q1-${language}`;
     return downloads[pkg] === 'done';
   };
 
-  const renderItem = ({ item: poi }: { item: POI }) => {
+  const renderItem = ({ item: poi }: { item: (typeof pois)[number] }) => {
     const dist = haversineDistance(userLat, userLng, poi.lat, poi.lng);
     const downloaded = isDownloaded(poi.id);
 
@@ -85,20 +108,24 @@ export default function ExploreScreen() {
           <View className="flex-row flex-wrap items-center justify-between gap-1.5">
             <View
               className="px-2 py-1 rounded-md"
-              style={{ backgroundColor: CATEGORY_COLORS[poi.category] }}
+              style={{
+                backgroundColor: CATEGORY_COLORS_BY_CODE[poi.category] ?? '#6b7280',
+              }}
             >
-              <Text className="text-xs leading-4 font-semibold text-white">{poi.category}</Text>
+              <Text className="text-xs leading-4 font-semibold text-white">
+                {CATEGORY_LABELS[poi.category] ?? poi.category}
+              </Text>
             </View>
             <Text className="text-xs leading-4 text-gray-500 font-medium flex-none">
               {formatDistance(dist)}
             </Text>
           </View>
           <Text className="text-base leading-[22px] font-bold text-gray-800 mt-2" numberOfLines={2}>
-            {poi.name[language] ?? ''}
+            {getLocalizedText(poi.name, language)}
           </Text>
-          {poi.shortDesc?.[language] && (
+          {!!getLocalizedText(poi.description, language) && (
             <Text className="text-sm leading-5 text-gray-500 mt-1" numberOfLines={2}>
-              {poi.shortDesc[language]}
+              {getLocalizedText(poi.description, language)}
             </Text>
           )}
         </View>
@@ -160,7 +187,14 @@ export default function ExploreScreen() {
         >
           {CATEGORIES.map((cat) => {
             const active = exploreCategory === cat;
-            const color = cat !== 'Tất cả' ? CATEGORY_COLORS[cat as Category] : '#0d9488';
+            const categoryCode = Object.keys(CATEGORY_LABELS).find(
+              (code) => CATEGORY_LABELS[code] === cat
+            );
+
+            const color =
+              cat !== 'Tất cả'
+                ? (CATEGORY_COLORS_BY_CODE[categoryCode ?? ''] ?? '#6b7280')
+                : '#0d9488';
             return (
               <TouchableOpacity
                 key={cat}
