@@ -179,7 +179,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [selectedVoice, setSelectedVoice] = useState('');
   const [playingPOIId, setPlayingPOIId] = useState<string | null>(null);
   const [playerProgress, setPlayerProgress] = useState(0);
-  const [speechRate, setSpeechRate] = useState(1.0);
+  const [speechRate, setSpeechRateState] = useState(1);
   const [isPlaying, setIsPlaying] = useState(false);
   // --- EXPO-AUDIO PLAYER & FALLBACK LOGIC ---
   const audioPlayerRef = useRef<AudioPlayer | null>(null);
@@ -193,50 +193,67 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  const statusSubscriptionRef = useRef<any>(null);
+
   const playAudioUrl = async (url: string): Promise<boolean> => {
     return new Promise((resolve) => {
       try {
+        if (statusSubscriptionRef.current) {
+          statusSubscriptionRef.current.remove();
+          statusSubscriptionRef.current = null;
+        }
         if (audioPlayerRef.current) {
-          audioPlayerRef.current.remove();
+          try {
+            audioPlayerRef.current.pause();
+            audioPlayerRef.current.remove();
+          } catch (e) {}
           audioPlayerRef.current = null;
         }
 
         const player = createAudioPlayer({ uri: url });
+        player.setPlaybackRate(speechRate, 'high');
         audioPlayerRef.current = player;
 
         let resolved = false;
 
-        const sub = player.addListener('playbackStatusUpdate', (status: any) => {
-          if (status.error) {
-            if (!resolved) {
-              resolved = true;
-              sub.remove();
-              resolve(false);
+        statusSubscriptionRef.current = player.addListener(
+          'playbackStatusUpdate',
+          (status: any) => {
+            if (status.error) {
+              if (!resolved) {
+                resolved = true;
+                resolve(false);
+              }
+            }
+            if (status.isLoaded) {
+              if (!resolved) {
+                resolved = true;
+                try {
+                  player.seekTo(0);
+                } catch (e) {}
+
+                player.play();
+                setIsPlaying(true);
+                resolve(true);
+              }
+
+              setIsPlaying(status.playing);
+
+              if (status.duration > 0) {
+                setPlayerProgress((status.currentTime / status.duration) * 100);
+              }
+
+              if (status.didJustFinish) {
+                setIsPlaying(false);
+                setPlayerProgress(100);
+              }
             }
           }
-          if (status.isLoaded) {
-            if (!resolved) {
-              resolved = true;
-              sub.remove();
-              player.play();
-              setIsPlaying(true);
-              resolve(true);
-            }
-            setIsPlaying(status.playing);
-            if (status.duration > 0) {
-              setPlayerProgress((status.currentTime / status.duration) * 100);
-            }
-            if (status.didJustFinish) {
-              setIsPlaying(false);
-              setPlayerProgress(100);
-            }
-          }
-        });
+        );
 
         setTimeout(() => {
           if (!resolved) {
             resolved = true;
-            sub.remove();
             resolve(false);
           }
         }, 4000);
@@ -314,13 +331,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const togglePlayback = async () => {
-    if (!audioPlayerRef.current) return;
-    if (isPlaying) {
-      audioPlayerRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      audioPlayerRef.current.play();
-      setIsPlaying(true);
+    const player = audioPlayerRef.current;
+
+    if (!player) {
+      console.warn('[Audio] Player không tồn tại.');
+      return;
+    }
+
+    try {
+      if (isPlaying) {
+        player.pause();
+        setIsPlaying(false);
+      } else {
+        // Nếu audio đã phát hết thì tua về đầu.
+        if (playerProgress >= 100) {
+          await player.seekTo(0);
+          setPlayerProgress(0);
+        }
+
+        player.play();
+        setIsPlaying(true);
+      }
+    } catch (error) {
+      console.warn('[Audio] Toggle playback error:', error);
     }
   };
 
@@ -334,6 +367,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setIsPlaying(false);
     setPlayerProgress(0);
     setShowMiniPlayer(false);
+  };
+
+  const setSpeechRate = (rate: number) => {
+    setSpeechRateState(rate);
+    const player = audioPlayerRef.current;
+    if (player) {
+      player.setPlaybackRate(rate, 'high');
+    }
   };
   // ------------------------------------------
 

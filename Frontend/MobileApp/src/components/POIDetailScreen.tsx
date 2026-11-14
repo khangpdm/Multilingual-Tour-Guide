@@ -98,7 +98,8 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
 
   const categoryColor = CATEGORY_COLORS[poi.category as keyof typeof CATEGORY_COLORS] || '#0D9488';
 
-  const isCurrentPOI = playingPOIId === poi.id;
+  const targetPoiId = poi.id;
+  const isCurrentPOI = playingPOIId === targetPoiId;
   const isCurrentPOIPlaying = isCurrentPOI && isPlaying;
 
   const progress =
@@ -142,7 +143,7 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
     if (isCurrentPOI) {
       void togglePlayback();
     } else {
-      void startPlayback(poi.id);
+      void startPlayback(targetPoiId);
     }
   };
 
@@ -240,7 +241,7 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
           </View>
         </View>
 
-        {/* Trình phát thuyết minh */}
+        {/* Trình phát thuyết minh âm thanh */}
         <View className="mx-4 mt-4 overflow-hidden rounded-2xl border border-gray-100">
           <View className="bg-teal-700 p-4">
             <View className="mb-4 flex-row items-center gap-3">
@@ -257,103 +258,74 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
               </View>
             </View>
 
-            {script ? (
-              <>
-                {/* Thanh tiến trình */}
-                <View
-                  accessibilityRole="progressbar"
-                  accessibilityValue={{
-                    min: 0,
-                    max: 100,
-                    now: progress,
-                  }}
-                  className="h-1.5 overflow-hidden rounded-full bg-white/30"
-                >
-                  <View
-                    className="h-full rounded-full bg-white"
-                    style={{ width: `${progress}%` }}
-                  />
-                </View>
+            {/* Thanh tiến trình */}
+            <View
+              accessibilityRole="progressbar"
+              accessibilityValue={{
+                min: 0,
+                max: 100,
+                now: progress,
+              }}
+              className="h-1.5 overflow-hidden rounded-full bg-white/30"
+            >
+              <View className="h-full rounded-full bg-white" style={{ width: `${progress}%` }} />
+            </View>
 
-                <View className="mb-4 mt-2 flex-row justify-between">
-                  <Text className="text-[10px] text-white/70">{Math.round(progress)}%</Text>
+            <View className="mb-4 mt-2 flex-row justify-between">
+              <Text className="text-[10px] text-white/70">{Math.round(progress)}%</Text>
 
-                  <Text className="text-[10px] text-white/70">Tiến trình thuyết minh</Text>
-                </View>
+              <Text className="text-[10px] text-white/70">Tiến trình thuyết minh</Text>
+            </View>
 
-                {/* Tốc độ và nút phát */}
-                <View className="flex-row items-center justify-between gap-3">
-                  <View className="flex-1 flex-row flex-wrap gap-1">
-                    {SPEECH_RATES.map((rate) => {
-                      const selected = speechRate === rate;
+            {/* Tốc độ và nút phát */}
+            <View className="flex-row items-center justify-between gap-3">
+              <View className="flex-1 flex-row flex-wrap gap-1">
+                {SPEECH_RATES.map((rate) => {
+                  const selected = speechRate === rate;
 
-                      return (
-                        <TouchableOpacity
-                          key={rate}
-                          onPress={() => setSpeechRate(rate)}
-                          activeOpacity={0.7}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Tốc độ ${rate} lần`}
-                          accessibilityState={{ selected }}
-                          className={`rounded px-2 py-2 ${selected ? 'bg-white' : 'bg-white/20'}`}
-                        >
-                          <Text
-                            className={`text-xs font-semibold ${
-                              selected ? 'text-teal-700' : 'text-white'
-                            }`}
-                          >
-                            {rate}×
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-
-                  <TouchableOpacity
-                    onPress={handlePlayback}
-                    activeOpacity={0.7}
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      isCurrentPOIPlaying ? 'Tạm dừng thuyết minh' : 'Phát thuyết minh'
-                    }
-                    className="h-12 w-12 items-center justify-center rounded-full bg-white"
-                  >
-                    {isCurrentPOIPlaying ? (
-                      <IconPause size={20} color="#0F766E" />
-                    ) : (
-                      <IconPlay size={20} color="#0F766E" />
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </>
-            ) : (
-              <View className="rounded-xl bg-white/10 p-3">
-                <Text className="text-center text-xs text-white/90">
-                  Chưa có thuyết minh bằng ngôn ngữ này.
-                </Text>
-
-                {availableLanguages.length > 0 && (
-                  <>
-                    <Text className="mt-2 text-center text-[10px] text-white/70">
-                      Ngôn ngữ có sẵn
-                    </Text>
-
-                    <View className="mt-2 flex-row flex-wrap justify-center gap-2">
-                      {availableLanguages.map((item) => (
-                        <View key={item} className="rounded bg-white/20 px-2 py-1">
-                          <Text className="text-xs uppercase text-white">{item}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  </>
-                )}
+                  return (
+                    <TouchableOpacity
+                      key={rate}
+                      onPress={() => setSpeechRate(rate)}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Tốc độ ${rate} lần`}
+                      accessibilityState={{ selected }}
+                      className={`rounded px-2 py-2 ${selected ? 'bg-white' : 'bg-white/20'}`}
+                    >
+                      <Text
+                        className={`text-xs font-semibold ${
+                          selected ? 'text-teal-700' : 'text-white'
+                        }`}
+                      >
+                        {rate}×
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-            )}
+
+              <TouchableOpacity
+                onPress={handlePlayback}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  isCurrentPOIPlaying ? 'Tạm dừng thuyết minh' : 'Phát thuyết minh'
+                }
+                className="h-12 w-12 items-center justify-center rounded-full bg-white"
+              >
+                {isCurrentPOIPlaying ? (
+                  <IconPause size={20} color="#0F766E" />
+                ) : (
+                  <IconPlay size={20} color="#0F766E" />
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View className="bg-teal-50 px-4 py-2">
             <Text className="text-center text-[10px] text-teal-600">
-              Thuyết minh TTS • Điều chỉnh giọng đọc trong Cài đặt
+              Trình phát Audio thông minh • Hỗ trợ đa ngôn ngữ và tự động tổng hợp
             </Text>
           </View>
         </View>
