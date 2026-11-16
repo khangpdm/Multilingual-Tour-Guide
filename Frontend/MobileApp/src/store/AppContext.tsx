@@ -10,6 +10,7 @@ import {
   getAudioFileUrl,
 } from '@/services/audioService';
 import { AudioPlayer, createAudioPlayer } from 'expo-audio';
+import i18n, { changeAppLanguage } from '@/i18n';
 
 export type { Language };
 export type Tab = 'home' | 'explore' | 'scan' | 'download' | 'settings';
@@ -108,7 +109,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     { code: 'vi', name: 'Tiếng Việt', flag: '🇻🇳' },
     { code: 'en', name: 'English', flag: '🇺🇸' },
   ]);
-  const [language, setLanguage] = useState<Language>('vi');
+  const [language, setLanguageState] = useState<Language>('vi');
+  const setLanguage = (nextLanguage: Language) => {
+    setLanguageState(nextLanguage);
+    void changeAppLanguage(nextLanguage);
+  };
+  useEffect(() => {
+    const syncLanguage = (nextLanguage: string) => {
+      if (['vi', 'en', 'fr', 'ja', 'ko', 'zh'].includes(nextLanguage)) {
+        setLanguageState(nextLanguage as Language);
+      }
+    };
+    i18n.on('languageChanged', syncLanguage);
+    syncLanguage(i18n.language);
+    return () => {
+      i18n.off('languageChanged', syncLanguage);
+    };
+  }, []);
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [autoPlay, setAutoPlay] = useState(true);
   const [wifiOnly, setWifiOnly] = useState(true);
@@ -120,9 +137,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Search & Filter
   const [homeSearch, setHomeSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('Tất cả');
+  const [selectedCategory, setSelectedCategory] = useState('all');
   const [exploreSearch, setExploreSearch] = useState('');
-  const [exploreCategory, setExploreCategory] = useState('Tất cả');
+  const [exploreCategory, setExploreCategory] = useState('all');
   const [exploreSort, setExploreSort] = useState<'distance' | 'name'>('distance');
 
   // Downloads
@@ -326,7 +343,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (successEn) return;
     }
 
-    Alert.alert('Thuyết minh', 'Chưa có bản audio thuyết minh cho địa điểm này.');
+    Alert.alert(i18n.t('detail.audioNarration'), i18n.t('detail.noAudio'));
     setIsPlaying(false);
   };
 

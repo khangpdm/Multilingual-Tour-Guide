@@ -1,6 +1,7 @@
 import { IconCheck, IconVolume } from '@/components/Icons';
 import { VoiceId } from '@/store/AppContext';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { PanResponder, Pressable, Text, View } from 'react-native';
 
 const MIN_RATE = 0.5;
@@ -31,6 +32,7 @@ export default function VoiceSettings({
   speechRate: number;
   onSpeechRateChange: (rate: number) => void;
 }) {
+  const { t } = useTranslation();
   const [sliderWidth, setSliderWidth] = React.useState(0);
   const speechRatePanResponder = React.useMemo(
     () =>
@@ -57,7 +59,8 @@ export default function VoiceSettings({
   return (
     <View className="mb-4 rounded-2xl bg-white p-[14px] shadow-sm">
       <Text className="mb-2 text-[10px] text-[#8796ad]">
-        Giọng tương thích với <Text className="font-bold text-[#0aa99d]">vn Tiếng Việt</Text>
+        {t('settings.voiceCompatibility')}{' '}
+        <Text className="font-bold text-[#0aa99d]">{t('settings.vietnamese')}</Text>
       </Text>
       {voices.map((voiceOption) => {
         const selected = voice === voiceOption.id;
@@ -85,12 +88,14 @@ export default function VoiceSettings({
       })}
 
       <View className="mt-[10px] flex-row items-center justify-between">
-        <Text className="text-[12px] font-semibold text-[#102d4f]">Tốc độ đọc</Text>
+        <Text className="text-[12px] font-semibold text-[#102d4f]">
+          {t('settings.readingSpeed')}
+        </Text>
         <Text className="text-[12px] font-bold text-[#0aa99d]">{speechRate.toFixed(2)}×</Text>
       </View>
       <View
         {...speechRatePanResponder.panHandlers}
-        accessibilityLabel="Tốc độ đọc"
+        accessibilityLabel={t('settings.readingSpeed')}
         accessibilityRole="adjustable"
         onLayout={(event) => setSliderWidth(event.nativeEvent.layout.width)}
         className="mt-[6px] h-6 justify-center bg-[#b9f1ec]"
@@ -107,7 +112,9 @@ export default function VoiceSettings({
       </View>
       <Pressable className="mt-[10px] h-[34px] flex-row items-center justify-center rounded-[10px] bg-[#0aa99d]">
         <IconVolume color="#fff" size={15} />
-        <Text className="ml-[7px] text-[11px] font-bold text-white">Nghe thử</Text>
+        <Text className="ml-[7px] text-[11px] font-bold text-white">
+          {t('settings.listenTest')}
+        </Text>
       </Pressable>
     </View>
   );

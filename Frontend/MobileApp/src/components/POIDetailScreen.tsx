@@ -3,8 +3,14 @@ import { Alert, Image, Linking, ScrollView, Text, TouchableOpacity, View } from 
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { CATEGORY_COLORS, formatDistance, haversineDistance } from '@/data/pois';
+import {
+  CATEGORY_COLORS,
+  formatDistance,
+  haversineDistance,
+  CATEGORY_LABEL_KEYS,
+} from '@/data/pois';
 import { useApp } from '@/store/AppContext';
+import { useTranslation } from 'react-i18next';
 
 import {
   IconBack,
@@ -24,6 +30,7 @@ interface Props {
 }
 
 export default function POIDetailScreen({ poiId, onBack }: Props) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
 
   const {
@@ -54,24 +61,19 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
         className="absolute inset-0 z-50 flex-1 items-center justify-center bg-white px-4"
         style={{ paddingTop: insets.top }}
       >
-        <Text className="text-gray-700">Không tìm thấy địa điểm: {poiId}</Text>
+        <Text className="text-gray-700">{t('detail.notFound', { poiId })}</Text>
 
         <TouchableOpacity onPress={onBack} className="mt-4 p-3">
-          <Text className="text-teal-600">Quay lại</Text>
+          <Text className="text-teal-600">{t('detail.back')}</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
   const getName = () => {
-    if (!poi.name) return 'Địa điểm';
+    if (!poi.name) return t('detail.place');
     if (typeof poi.name === 'object') {
-      return (
-        (poi.name as any)[language] ||
-        (poi.name as any)['vi'] ||
-        Object.values(poi.name)[0] ||
-        'Địa điểm'
-      );
+      return (poi.name as any)[language] || '';
     }
     return poi.name;
   };
@@ -79,7 +81,7 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
   const getDescription = () => {
     if (!poi.description) return '';
     if (typeof poi.description === 'object') {
-      return (poi.description as any)[language] || (poi.description as any)['vi'] || '';
+      return (poi.description as any)[language] || '';
     }
     return poi.description;
   };
@@ -87,7 +89,7 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
   const getScript = () => {
     if (!poi.ttsScript) return getDescription();
     if (typeof poi.ttsScript === 'object') {
-      return (poi.ttsScript as any)[language] || (poi.ttsScript as any)['vi'] || getDescription();
+      return (poi.ttsScript as any)[language] || getDescription();
     }
     return poi.ttsScript;
   };
@@ -121,21 +123,21 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
 
   const downloadLabel =
     downloadStatus === 'done'
-      ? 'Đã tải'
+      ? t('detail.downloaded')
       : downloadStatus === 'downloading'
-        ? 'Đang tải'
-        : 'Tải offline';
+        ? t('common.loading')
+        : t('detail.downloadOffline');
 
   const openMap = async () => {
     if (!poi.mapLink) {
-      Alert.alert('Bản đồ', 'Địa điểm này chưa có liên kết bản đồ.');
+      Alert.alert(t('detail.map'), t('detail.noMapLink'));
       return;
     }
 
     try {
       await Linking.openURL(poi.mapLink);
     } catch {
-      Alert.alert('Bản đồ', 'Không thể mở liên kết bản đồ. Bạn hãy thử lại.');
+      Alert.alert(t('detail.map'), t('detail.openMapError'));
     }
   };
 
@@ -167,7 +169,7 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
         <TouchableOpacity
           onPress={onBack}
           accessibilityRole="button"
-          accessibilityLabel="Quay lại"
+          accessibilityLabel={t('detail.back')}
           activeOpacity={0.7}
           className="absolute left-4 h-10 w-10 items-center justify-center rounded-full bg-black/50"
           style={{ top: safeTop }}
@@ -179,7 +181,12 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
           className="absolute right-4 rounded-full px-3 py-1.5"
           style={{ backgroundColor: categoryColor, top: safeTop }}
         >
-          <Text className="text-xs font-semibold text-white">{poi.category}</Text>
+          <Text className="text-xs font-semibold text-white">
+            {t(
+              CATEGORY_LABEL_KEYS[poi.category as keyof typeof CATEGORY_LABEL_KEYS] ??
+                'categories.landmark'
+            )}
+          </Text>
         </View>
 
         {/* Tên và địa chỉ */}
@@ -192,7 +199,7 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
             <IconMapPin size={13} color="#FB923C" />
 
             <Text numberOfLines={2} className="flex-1 text-xs text-white/90">
-              {poi.address}
+              {typeof poi.address === 'string' ? poi.address : poi.address[language] || ''}
             </Text>
           </View>
         </View>
@@ -205,7 +212,7 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
       >
         <View className="border-b border-gray-100 bg-white px-4 py-3">
           <Text className="text-sm font-semibold text-orange-500">
-            {formatDistance(distance)} từ bạn
+            {t('detail.distanceFromYou', { distance: formatDistance(distance) })}
           </Text>
 
           <View className="mt-3 flex-row flex-wrap gap-2">
@@ -216,7 +223,7 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
             >
               <IconNavigation size={14} color="#4B5563" />
 
-              <Text className="text-xs text-gray-600">Mở bản đồ</Text>
+              <Text className="text-xs text-gray-600">{t('detail.openMap')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -247,7 +254,7 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
             <View className="mb-4 flex-row items-center gap-3">
               <View className="flex-1">
                 <Text className="text-[10px] font-semibold uppercase tracking-wider text-white/70">
-                  Thuyết minh âm thanh
+                  {t('detail.audioNarration')}
                 </Text>
 
                 <Text className="mt-1 text-sm font-semibold text-white">{name}</Text>
@@ -274,7 +281,7 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
             <View className="mb-4 mt-2 flex-row justify-between">
               <Text className="text-[10px] text-white/70">{Math.round(progress)}%</Text>
 
-              <Text className="text-[10px] text-white/70">Tiến trình thuyết minh</Text>
+              <Text className="text-[10px] text-white/70">{t('detail.narrationProgress')}</Text>
             </View>
 
             {/* Tốc độ và nút phát */}
@@ -289,7 +296,7 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
                       onPress={() => setSpeechRate(rate)}
                       activeOpacity={0.7}
                       accessibilityRole="button"
-                      accessibilityLabel={`Tốc độ ${rate} lần`}
+                      accessibilityLabel={t('detail.speed', { rate })}
                       accessibilityState={{ selected }}
                       className={`rounded px-2 py-2 ${selected ? 'bg-white' : 'bg-white/20'}`}
                     >
@@ -310,7 +317,7 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
                 activeOpacity={0.7}
                 accessibilityRole="button"
                 accessibilityLabel={
-                  isCurrentPOIPlaying ? 'Tạm dừng thuyết minh' : 'Phát thuyết minh'
+                  isCurrentPOIPlaying ? t('detail.pauseNarration') : t('detail.playNarration')
                 }
                 className="h-12 w-12 items-center justify-center rounded-full bg-white"
               >
@@ -325,14 +332,14 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
 
           <View className="bg-teal-50 px-4 py-2">
             <Text className="text-center text-[10px] text-teal-600">
-              Trình phát Audio thông minh • Hỗ trợ đa ngôn ngữ và tự động tổng hợp
+              {t('detail.playerDescription')}
             </Text>
           </View>
         </View>
 
         {/* Giới thiệu */}
         <View className="mt-5 px-4">
-          <Text className="mb-2 text-base font-bold text-gray-800">Giới thiệu</Text>
+          <Text className="mb-2 text-base font-bold text-gray-800">{t('detail.introduction')}</Text>
 
           {description ? (
             <>
@@ -349,13 +356,13 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
                 className="mt-2 self-start py-2"
               >
                 <Text className="text-sm font-semibold text-teal-600">
-                  {expanded ? 'Thu gọn ↑' : 'Xem thêm ↓'}
+                  {expanded ? t('detail.collapse') : t('detail.readMore')}
                 </Text>
               </TouchableOpacity>
             </>
           ) : (
             <View className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-              <Text className="text-sm text-amber-700">Chưa có mô tả bằng ngôn ngữ này.</Text>
+              <Text className="text-sm text-amber-700">{t('detail.noDescription')}</Text>
             </View>
           )}
         </View>

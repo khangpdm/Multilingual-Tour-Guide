@@ -3,25 +3,27 @@ import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconCompass, IconDownload, IconHome, IconQr, IconSettings } from './Icons';
+import { useTranslation } from 'react-i18next';
 
 const TABS: {
   id: Tab;
-  label: string;
+  labelKey: string;
   Icon: React.ComponentType<{
     size?: number;
     color?: string;
     className?: string;
   }>;
 }[] = [
-  { id: 'home', label: 'Trang chủ', Icon: IconHome },
-  { id: 'explore', label: 'Khám phá', Icon: IconCompass },
-  { id: 'scan', label: 'Quét QR', Icon: IconQr },
-  { id: 'download', label: 'Tải về', Icon: IconDownload },
-  { id: 'settings', label: 'Cài đặt', Icon: IconSettings },
+  { id: 'home', labelKey: 'common.home', Icon: IconHome },
+  { id: 'explore', labelKey: 'common.explore', Icon: IconCompass },
+  { id: 'scan', labelKey: 'common.scanQR', Icon: IconQr },
+  { id: 'download', labelKey: 'common.downloads', Icon: IconDownload },
+  { id: 'settings', labelKey: 'common.settings', Icon: IconSettings },
 ];
 
 export default function BottomNav() {
   const { activeTab, setActiveTab } = useApp();
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
 
   return (
@@ -29,7 +31,7 @@ export default function BottomNav() {
       className="w-full flex-row bg-white border-t border-gray-200"
       style={{ paddingBottom: insets.bottom }}
     >
-      {TABS.map(({ id, label, Icon }) => {
+      {TABS.map(({ id, labelKey, Icon }) => {
         const active = activeTab === id;
         const isCenter = id === 'scan';
 
@@ -72,7 +74,7 @@ export default function BottomNav() {
                 color: isCenter ? (active ? '#0d9488' : '#6b7280') : active ? '#0d9488' : '#9ca3af',
               }}
             >
-              {label}
+              {t(labelKey)}
             </Text>
 
             {active && !isCenter && (

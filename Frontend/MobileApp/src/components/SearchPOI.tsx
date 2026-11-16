@@ -2,6 +2,7 @@ import { IconClose, IconSearch } from '@/components/Icons';
 import { formatDistance, haversineDistance } from '@/data/pois';
 import { POI } from '@/services/poiService';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Image,
   Keyboard, // Import Keyboard từ react-native
@@ -36,6 +37,7 @@ export default function SearchPOI({
   userLng,
   onSelectPOI,
 }: SearchPOIProps) {
+  const { t } = useTranslation();
   const handleCloseSearch = () => {
     Keyboard.dismiss();
     setSearchOpen(false);
@@ -54,7 +56,7 @@ export default function SearchPOI({
             setSearchOpen(true);
           }}
           onFocus={() => setSearchOpen(true)}
-          placeholder="Tìm địa chỉ bạn muốn khám phá..."
+          placeholder={t('home.searchPlaceholder')}
           placeholderTextColor="#9CA3AF"
           className="flex-1 px-2 py-2 text-sm text-gray-800"
         />
@@ -93,9 +95,7 @@ export default function SearchPOI({
           <ScrollView keyboardShouldPersistTaps="handled">
             {searchResults.map((p) => {
               const poiName =
-                typeof p.name === 'object'
-                  ? p.name[language as keyof typeof p.name] || p.name.vi
-                  : p.name;
+                typeof p.name === 'object' ? p.name[language as keyof typeof p.name] || '' : p.name;
               const distanceStr = formatDistance(haversineDistance(userLat, userLng, p.lat, p.lng));
 
               return (
@@ -117,9 +117,9 @@ export default function SearchPOI({
                     <Text className="text-sm font-medium text-gray-800" numberOfLines={1}>
                       {poiName}
                     </Text>
-                    {p.address && (
+                    {(typeof p.address === 'string' ? p.address : p.address[language] || '') && (
                       <Text className="text-xs text-gray-400" numberOfLines={1}>
-                        {p.address}
+                        {typeof p.address === 'string' ? p.address : p.address[language] || ''}
                       </Text>
                     )}
                   </View>
@@ -134,7 +134,7 @@ export default function SearchPOI({
       {/* THÔNG BÁO KHÔNG TÌM THẤY */}
       {searchOpen && homeSearch.length > 0 && searchResults.length === 0 && (
         <View className="absolute left-4 right-4 top-14 z-30 items-center rounded-xl border border-gray-100 bg-white p-4 shadow-xl">
-          <Text className="text-sm text-gray-500">Không tìm thấy địa điểm nào</Text>
+          <Text className="text-sm text-gray-500">{t('explore.emptyTitle')}</Text>
         </View>
       )}
     </View>

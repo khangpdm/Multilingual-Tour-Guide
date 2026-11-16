@@ -6,7 +6,7 @@ export interface POI {
   description: Record<string, string | null> | string;
   ttsScript: Record<string, string | null>;
   category: string;
-  address: string;
+  address: Record<string, string | null> | string;
   lat: number;
   lng: number;
   coverImage: string;
@@ -15,22 +15,20 @@ export interface POI {
 
 export async function fetchPOIs(): Promise<POI[]> {
   try {
-    const data = await httpGet('/poi/load-all');
+    const data = await httpGet<any>('/poi/load-all');
 
     const rawPois = data.updated_pois || data.pois || [];
 
     return rawPois.map((item: any) => {
       const nameMap: Record<string, string> = {};
       const descMap: Record<string, string> = {};
-      let defaultAddress = '';
+      const addressMap: Record<string, string | null> = {};
 
       if (item.content) {
         Object.keys(item.content).forEach((lang) => {
           nameMap[lang] = item.content[lang].name;
           descMap[lang] = item.content[lang].text;
-          if (lang === 'vi' || !defaultAddress) {
-            defaultAddress = item.content[lang].address;
-          }
+          addressMap[lang] = item.content[lang].address || null;
         });
       }
 
@@ -39,8 +37,8 @@ export async function fetchPOIs(): Promise<POI[]> {
         name: nameMap,
         description: descMap,
         ttsScript: descMap,
-        category: item.category || 'landmark',
-        address: defaultAddress,
+        category: normalizeCategory(item.category),
+        address: addressMap,
         lat: item.location?.lat || 0,
         lng: item.location?.lng || 0,
         coverImage:
@@ -53,10 +51,31 @@ export async function fetchPOIs(): Promise<POI[]> {
   }
 }
 
+const CATEGORY_ALIASES: Record<string, string> = {
+  'Di tích': 'landmark',
+  historical_site: 'landmark',
+  landmark: 'landmark',
+  'Bảo tàng': 'museum',
+  museum: 'museum',
+  'Tôn giáo': 'religious',
+  religious: 'religious',
+  'Kiến trúc': 'architecture',
+  architecture: 'architecture',
+  'Công viên': 'park',
+  park: 'park',
+  'Ẩm thực': 'food',
+  food: 'food',
+};
+
+function normalizeCategory(value?: string): string {
+  return CATEGORY_ALIASES[value || ''] || 'landmark';
+}
+
 export async function fetchPOIDetail(poiId: string): Promise<POI | null> {
   try {
-    const data = await httpGet(`/pois/${poiId}`);
-    return data.poi || null;
+    const data = await httpGet<{ poi?: POI }>(`/pois/${poiId}`);
+    const poi = data.poi;
+    return poi ? { ...poi, category: normalizeCategory(poi.category) } : null;
   } catch (error) {
     console.warn(`[PoiService] Không thể tải chi tiết POI ${poiId}:`, error);
     return null;

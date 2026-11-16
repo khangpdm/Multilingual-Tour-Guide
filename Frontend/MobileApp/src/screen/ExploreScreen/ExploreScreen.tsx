@@ -1,25 +1,16 @@
 import { IconCheck, IconClose, IconSearch } from '@/components/Icons';
+import { useTranslation } from 'react-i18next';
 import {
-  CATEGORY_COLORS,
   formatDistance,
   haversineDistance,
-  CATEGORY_LABELS,
+  CATEGORY_LABEL_KEYS,
   CATEGORY_COLORS_BY_CODE,
-  type Category,
 } from '@/data/pois';
 import { useApp } from '@/store/AppContext';
 import React, { useMemo } from 'react';
 import { FlatList, Image, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-const CATEGORIES = [
-  'Tất cả',
-  'Di tích',
-  'Bảo tàng',
-  'Tôn giáo',
-  'Kiến trúc',
-  'Công viên',
-  'Ẩm thực',
-];
+const CATEGORIES = ['all', 'landmark', 'museum', 'religious', 'architecture', 'park', 'food'];
 
 const getLocalizedText = (
   value: Record<string, string | null> | string | undefined,
@@ -31,10 +22,11 @@ const getLocalizedText = (
     return value;
   }
 
-  return value[language] ?? value['en'] ?? '';
+  return value[language] ?? '';
 };
 
 export default function ExploreScreen() {
+  const { t } = useTranslation();
   const {
     exploreSearch,
     setExploreSearch,
@@ -54,16 +46,13 @@ export default function ExploreScreen() {
     const q = exploreSearch.trim().toLowerCase();
 
     const list = pois.filter((p) => {
-      const selectedCategoryCode = Object.keys(CATEGORY_LABELS).find(
-        (code) => CATEGORY_LABELS[code] === exploreCategory
-      );
-
-      const matchCat = exploreCategory === 'Tất cả' || p.category === selectedCategoryCode;
+      const matchCat = exploreCategory === 'all' || p.category === exploreCategory;
 
       const name = getLocalizedText(p.name, language);
       const nameMatch = name.toLowerCase().includes(q);
 
-      const addressMatch = p.address?.toLowerCase().includes(q);
+      const address = getLocalizedText(p.address, language);
+      const addressMatch = address.toLowerCase().includes(q);
 
       const matchQ = !q || nameMatch || addressMatch;
 
@@ -113,7 +102,10 @@ export default function ExploreScreen() {
               }}
             >
               <Text className="text-xs leading-4 font-semibold text-white">
-                {CATEGORY_LABELS[poi.category] ?? poi.category}
+                {t(
+                  CATEGORY_LABEL_KEYS[poi.category as keyof typeof CATEGORY_LABEL_KEYS] ??
+                    'categories.landmark'
+                )}
               </Text>
             </View>
             <Text className="text-xs leading-4 text-gray-500 font-medium flex-none">
@@ -138,7 +130,9 @@ export default function ExploreScreen() {
       {/* Header */}
       <View className="flex-none bg-white px-4 pt-4 border-b border-gray-100">
         <View className="flex-row flex-wrap items-center justify-between gap-3 mb-4">
-          <Text className="text-[28px] leading-9 font-bold text-gray-800">Khám phá</Text>
+          <Text className="text-[28px] leading-9 font-bold text-gray-800">
+            {t('explore.title')}
+          </Text>
           <View className="flex-row items-center gap-1 rounded-xl bg-gray-100 p-1">
             {(['distance', 'name'] as const).map((s) => {
               const selected = exploreSort === s;
@@ -154,7 +148,7 @@ export default function ExploreScreen() {
                       selected ? 'text-teal-600' : 'text-gray-500'
                     }`}
                   >
-                    {s === 'distance' ? 'Gần nhất' : 'A–Z'}
+                    {s === 'distance' ? t('explore.nearest') : t('explore.alphabetical')}
                   </Text>
                 </TouchableOpacity>
               );
@@ -168,7 +162,7 @@ export default function ExploreScreen() {
           <TextInput
             value={exploreSearch}
             onChangeText={setExploreSearch}
-            placeholder="Tìm địa điểm…"
+            placeholder={t('explore.searchPlaceholder')}
             placeholderTextColor="#9ca3af"
             className="flex-1 text-base text-gray-700 py-0 m-0"
           />
@@ -187,14 +181,8 @@ export default function ExploreScreen() {
         >
           {CATEGORIES.map((cat) => {
             const active = exploreCategory === cat;
-            const categoryCode = Object.keys(CATEGORY_LABELS).find(
-              (code) => CATEGORY_LABELS[code] === cat
-            );
 
-            const color =
-              cat !== 'Tất cả'
-                ? (CATEGORY_COLORS_BY_CODE[categoryCode ?? ''] ?? '#6b7280')
-                : '#0d9488';
+            const color = cat !== 'all' ? (CATEGORY_COLORS_BY_CODE[cat] ?? '#6b7280') : '#0d9488';
             return (
               <TouchableOpacity
                 key={cat}
@@ -209,7 +197,9 @@ export default function ExploreScreen() {
                     active ? 'text-white' : 'text-gray-600'
                   }`}
                 >
-                  {cat}
+                  {cat === 'all'
+                    ? t('categories.all')
+                    : t(CATEGORY_LABEL_KEYS[cat as keyof typeof CATEGORY_LABEL_KEYS])}
                 </Text>
               </TouchableOpacity>
             );
@@ -226,19 +216,21 @@ export default function ExploreScreen() {
           <View className="flex flex-col items-center justify-center px-4 py-16">
             <Text className="text-4xl mb-3">🔍</Text>
             <Text className="text-base text-center text-gray-700 font-semibold">
-              Không tìm thấy địa điểm nào
+              {t('explore.emptyTitle')}
             </Text>
             <Text className="text-gray-500 text-sm leading-5 text-center mt-2">
-              Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm
+              {t('explore.emptyHint')}
             </Text>
             <TouchableOpacity
               onPress={() => {
                 setExploreSearch('');
-                setExploreCategory('Tất cả');
+                setExploreCategory('all');
               }}
               className="mt-5 px-5 py-3 bg-teal-50 rounded-full"
             >
-              <Text className="text-teal-600 text-sm font-semibold">Xóa bộ lọc</Text>
+              <Text className="text-teal-600 text-sm font-semibold">
+                {t('explore.clearFilters')}
+              </Text>
             </TouchableOpacity>
           </View>
         }

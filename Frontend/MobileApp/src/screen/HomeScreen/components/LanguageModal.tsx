@@ -1,5 +1,6 @@
 import { LanguageItem } from '@/services/languageService';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, Text, TouchableOpacity, View } from 'react-native';
 
 interface LanguageModalProps {
@@ -17,12 +18,13 @@ export default function LanguageModal({
   currentLanguage,
   onSelectLanguage,
 }: LanguageModalProps) {
+  const { t } = useTranslation();
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable className="flex-1 justify-center bg-black/40 px-6" onPress={onClose}>
         <View className="rounded-2xl bg-white p-4 shadow-xl">
           <Text className="mb-3 text-lg font-bold text-gray-800">
-            Chọn ngôn ngữ / Select Language
+            {t('settings.selectLanguage')}
           </Text>
 
           {supportedLanguages.map((item) => {

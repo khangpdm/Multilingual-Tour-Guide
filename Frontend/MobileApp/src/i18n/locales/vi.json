@@ -1,0 +1,141 @@
+{
+  "common": {
+    "home": "Trang chủ",
+    "explore": "Khám phá",
+    "scanQR": "Quét QR",
+    "downloads": "Tải về",
+    "settings": "Cài đặt",
+    "loading": "Đang tải...",
+    "cancel": "Hủy",
+    "confirm": "Xác nhận"
+  },
+  "home": {
+    "title": "Khám phá thành phố",
+    "subtitle": "Khám phá những địa điểm thú vị xung quanh bạn",
+    "nearby": "Địa điểm gần bạn",
+    "featured": "Địa điểm nổi bật",
+    "searchPlaceholder": "Tìm địa chỉ hoặc địa điểm...",
+    "nearbyCount": "Gần bạn · {{count}} địa điểm"
+  },
+  "explore": {
+    "title": "Khám phá",
+    "searchPlaceholder": "Tìm địa điểm...",
+    "allCategories": "Tất cả",
+    "noResults": "Không tìm thấy địa điểm",
+    "nearest": "Gần nhất",
+    "alphabetical": "A–Z",
+    "emptyTitle": "Không tìm thấy địa điểm nào",
+    "emptyHint": "Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm",
+    "clearFilters": "Xóa bộ lọc"
+  },
+  "categories": {
+    "all": "Tất cả",
+    "landmark": "Di tích",
+    "museum": "Bảo tàng",
+    "religious": "Tôn giáo",
+    "architecture": "Kiến trúc",
+    "park": "Công viên",
+    "food": "Ẩm thực"
+  },
+  "settings": {
+    "title": "Cài đặt",
+    "language": "Ngôn ngữ",
+    "selectLanguage": "Chọn ngôn ngữ",
+    "autoPlay": "Tự động phát thuyết minh",
+    "gpsAutoplay": "GPS và tự động phát",
+    "voice": "Giọng đọc TTS",
+    "offline": "Nội dung offline",
+    "languageDescription": "Ngôn ngữ giao diện và thuyết minh",
+    "autoPlayNearby": "Tự động phát khi đến gần",
+    "autoPlayDescription": "Phát thuyết minh khi vào vùng kích hoạt",
+    "activationRadius": "Bán kính kích hoạt",
+    "radiusNote": "Bán kính hoạt động (không phải độ chính xác GPS)",
+    "locationMode": "Chế độ cập nhật vị trí",
+    "locationModes": {
+      "battery": {
+        "title": "Tiết kiệm pin",
+        "description": "Ít chính xác hơn"
+      },
+      "balanced": {
+        "title": "Cân bằng",
+        "description": "Mặc định"
+      },
+      "accuracy": {
+        "title": "Độ chính xác cao",
+        "description": "Tốn pin hơn"
+      }
+    },
+    "gpsNote": "Ứng dụng không thể cải thiện độ chính xác GPS vượt quá khả năng phần cứng của thiết bị.",
+    "wifiOnly": "Chỉ tải qua Wi-Fi",
+    "saveMobileData": "Tiết kiệm dữ liệu di động",
+    "downloadedStorage": "Dung lượng đã tải",
+    "manageOffline": "Quản lý gói offline",
+    "voiceCompatibility": "Giọng tương thích với",
+    "readingSpeed": "Tốc độ đọc",
+    "listenTest": "Nghe thử giọng đọc",
+    "vietnamese": "Tiếng Việt"
+  },
+  "qr": {
+    "checkingPermission": "Đang kiểm tra quyền camera...",
+    "permissionTitle": "Cần quyền truy cập camera",
+    "permissionDescription": "Cho phép ứng dụng sử dụng camera để quét mã QR địa điểm du lịch.",
+    "grantPermission": "Cấp quyền camera",
+    "title": "Quét QR địa điểm",
+    "turnFlashOff": "Tắt đèn flash",
+    "turnFlashOn": "Bật đèn flash",
+    "retry": "Quét lại",
+    "instructions": "Hướng dẫn quét mã",
+    "step1Title": "Đưa camera về phía mã QR",
+    "step1Description": "Giữ mã QR trọn trong khung và đảm bảo đủ ánh sáng.",
+    "step2Title": "Mở thuyết minh địa điểm",
+    "step2Description": "Ứng dụng tự nhận diện mã và mở địa điểm tương ứng.",
+    "status": {
+      "idle": "Đưa mã QR địa điểm vào trong khung",
+      "scanning": "Đang xử lý mã QR...",
+      "success": "Tìm thấy địa điểm! Đang mở...",
+      "invalid": "Mã QR không hợp lệ hoặc chưa được hỗ trợ",
+      "missing": "Không tìm thấy địa điểm tương ứng"
+    }
+  },
+  "download": {
+    "title": "Nội dung offline",
+    "downloaded": "45 MB đã tải",
+    "packageCount": "1 gói / 6 gói khả dụng",
+    "wifiOnly": "Chỉ tải khi kết nối Wi-Fi",
+    "region": "TP. Hồ Chí Minh · Quận 1",
+    "points": "{{count}} địa điểm",
+    "remaining": "Còn {{size}}",
+    "status": {
+      "downloaded": "Đã tải xong",
+      "downloading": "Hủy",
+      "available": "Tải xuống"
+    },
+    "downloadInProgress": "Đang tải",
+    "regionTitle": "Quận 1 - Trung tâm lịch sử"
+  },
+  "detail": {
+    "notFound": "Không tìm thấy địa điểm: {{poiId}}",
+    "back": "Quay lại",
+    "place": "Địa điểm",
+    "downloaded": "Đã tải",
+    "downloadOffline": "Tải offline",
+    "map": "Bản đồ",
+    "noMapLink": "Địa điểm này chưa có liên kết bản đồ.",
+    "openMapError": "Không thể mở liên kết bản đồ. Bạn hãy thử lại.",
+    "distanceFromYou": "{{distance}} từ bạn",
+    "openMap": "Mở bản đồ",
+    "audioNarration": "Thuyết minh âm thanh",
+    "narrationProgress": "Tiến trình thuyết minh",
+    "speed": "Tốc độ {{rate}} lần",
+    "pauseNarration": "Tạm dừng thuyết minh",
+    "playNarration": "Phát thuyết minh",
+    "playerDescription": "Trình phát audio thông minh · Hỗ trợ đa ngôn ngữ và tự động tổng hợp",
+    "introduction": "Giới thiệu",
+    "collapse": "Thu gọn ↑",
+    "readMore": "Xem thêm ↓",
+    "noDescription": "Chưa có mô tả bằng ngôn ngữ này.",
+    "listenNarration": "Nghe thuyết minh",
+    "viewDetails": "Xem chi tiết",
+    "noAudio": "Chưa có bản audio thuyết minh cho địa điểm này."
+  }
+}

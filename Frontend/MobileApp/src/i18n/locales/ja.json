@@ -1,0 +1,141 @@
+{
+  "common": {
+    "home": "ホーム",
+    "explore": "探索",
+    "scanQR": "QRをスキャン",
+    "downloads": "ダウンロード",
+    "settings": "設定",
+    "loading": "読み込み中...",
+    "cancel": "キャンセル",
+    "confirm": "確認"
+  },
+  "home": {
+    "title": "街を探索",
+    "subtitle": "周辺の見どころを見つけましょう",
+    "nearby": "近くのスポット",
+    "featured": "おすすめスポット",
+    "searchPlaceholder": "住所や場所を検索...",
+    "nearbyCount": "近く · {{count}} 件"
+  },
+  "explore": {
+    "title": "探索",
+    "searchPlaceholder": "場所を検索...",
+    "allCategories": "すべて",
+    "noResults": "場所が見つかりません",
+    "nearest": "距離順",
+    "alphabetical": "A–Z",
+    "emptyTitle": "場所が見つかりません",
+    "emptyHint": "フィルターまたは検索語を変更してください",
+    "clearFilters": "フィルターをクリア"
+  },
+  "categories": {
+    "all": "すべて",
+    "landmark": "史跡",
+    "museum": "博物館",
+    "religious": "宗教施設",
+    "architecture": "建築",
+    "park": "公園",
+    "food": "グルメ"
+  },
+  "settings": {
+    "title": "設定",
+    "language": "言語",
+    "selectLanguage": "言語を選択",
+    "autoPlay": "音声ガイドを自動再生",
+    "gpsAutoplay": "GPSと自動再生",
+    "voice": "読み上げ音声",
+    "offline": "オフラインコンテンツ",
+    "languageDescription": "表示と音声ガイドの言語",
+    "autoPlayNearby": "近くで自動再生",
+    "autoPlayDescription": "範囲に入ると音声ガイドを再生",
+    "activationRadius": "起動範囲",
+    "radiusNote": "有効範囲（GPS精度ではありません）",
+    "locationMode": "位置情報の更新モード",
+    "locationModes": {
+      "battery": {
+        "title": "バッテリー節約",
+        "description": "精度は低め"
+      },
+      "balanced": {
+        "title": "バランス",
+        "description": "標準"
+      },
+      "accuracy": {
+        "title": "高精度",
+        "description": "電池消費が増加"
+      }
+    },
+    "gpsNote": "GPSの精度は端末のハードウェア性能を超えて向上できません。",
+    "wifiOnly": "Wi-Fi接続時のみダウンロード",
+    "saveMobileData": "モバイルデータを節約",
+    "downloadedStorage": "ダウンロード済み容量",
+    "manageOffline": "オフラインデータを管理",
+    "voiceCompatibility": "対応する音声言語：",
+    "readingSpeed": "読み上げ速度",
+    "listenTest": "音声を試聴",
+    "vietnamese": "ベトナム語"
+  },
+  "qr": {
+    "checkingPermission": "カメラの権限を確認中...",
+    "permissionTitle": "カメラへのアクセスが必要です",
+    "permissionDescription": "観光地のQRコードを読み取るため、カメラの使用を許可してください。",
+    "grantPermission": "カメラを許可",
+    "title": "スポットのQRをスキャン",
+    "turnFlashOff": "フラッシュをオフ",
+    "turnFlashOn": "フラッシュをオン",
+    "retry": "再スキャン",
+    "instructions": "スキャン方法",
+    "step1Title": "カメラをQRコードに向けてください",
+    "step1Description": "QRコード全体を枠内に収め、十分な明るさを確保してください。",
+    "step2Title": "スポットの音声ガイドを開く",
+    "step2Description": "コードを認識すると、該当するスポットを開きます。",
+    "status": {
+      "idle": "スポットのQRコードを枠内に合わせてください",
+      "scanning": "QRコードを処理中...",
+      "success": "スポットが見つかりました。開いています...",
+      "invalid": "無効または未対応のQRコードです",
+      "missing": "該当するスポットが見つかりません"
+    }
+  },
+  "download": {
+    "title": "オフラインコンテンツ",
+    "downloaded": "45 MBをダウンロード済み",
+    "packageCount": "1件 / 6件利用可能",
+    "wifiOnly": "Wi-Fi接続時のみダウンロード",
+    "region": "ホーチミン市 · 1区",
+    "points": "{{count}} 件",
+    "remaining": "残り {{size}}",
+    "status": {
+      "downloaded": "ダウンロード済み",
+      "downloading": "キャンセル",
+      "available": "ダウンロード"
+    },
+    "downloadInProgress": "ダウンロード中",
+    "regionTitle": "1区 - 歴史地区"
+  },
+  "detail": {
+    "notFound": "スポットが見つかりません：{{poiId}}",
+    "back": "戻る",
+    "place": "スポット",
+    "downloaded": "ダウンロード済み",
+    "downloadOffline": "オフライン用に保存",
+    "map": "地図",
+    "noMapLink": "このスポットには地図リンクがありません。",
+    "openMapError": "地図リンクを開けませんでした。もう一度お試しください。",
+    "distanceFromYou": "現在地から{{distance}}",
+    "openMap": "地図を開く",
+    "audioNarration": "音声ガイド",
+    "narrationProgress": "再生状況",
+    "speed": "速度 {{rate}} 倍",
+    "pauseNarration": "一時停止",
+    "playNarration": "音声ガイドを再生",
+    "playerDescription": "スマート音声プレーヤー · 多言語対応、自動生成",
+    "introduction": "紹介",
+    "collapse": "閉じる ↑",
+    "readMore": "続きを読む ↓",
+    "noDescription": "この言語の説明はありません。",
+    "listenNarration": "音声ガイドを聴く",
+    "viewDetails": "詳細を見る",
+    "noAudio": "このスポットの音声ガイドはありません。"
+  }
+}

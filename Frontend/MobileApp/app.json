@@ -51,7 +51,8 @@
         }
       ],
       "expo-build-properties",
-      "expo-audio"
+      "expo-audio",
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true,

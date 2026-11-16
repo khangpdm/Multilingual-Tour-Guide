@@ -5,8 +5,9 @@ import HomeScreen from '@/screen/HomeScreen/HomeScreen';
 import QRScanScreen from '@/screen/QRScreen/QRScreen';
 import SettingsScreen from '@/screen/Setting/SettingsScreen';
 import { useApp } from '@/store/AppContext';
-import React from 'react';
-import { StatusBar, View } from 'react-native';
+import { initializeI18n } from '@/i18n';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, StatusBar, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 function AppShell() {
@@ -37,12 +38,39 @@ function AppShell() {
           <SettingsScreen />
         </View>
       </View>
+
       <BottomNav />
     </SafeAreaView>
   );
 }
 
 export default function App() {
+  const [i18nReady, setI18nReady] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    initializeI18n()
+      .then(() => {
+        if (mounted) setI18nReady(true);
+      })
+      .catch((error) => {
+        console.error('Không thể khởi tạo i18n:', error);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  if (!i18nReady) {
+    return (
+      <View className="flex-1 items-center justify-center bg-slate-50">
+        <ActivityIndicator size="large" color="#0d9488" />
+      </View>
+    );
+  }
+
   return (
     <SafeAreaProvider>
       <AppShell />

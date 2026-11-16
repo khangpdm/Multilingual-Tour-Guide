@@ -46,9 +46,7 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
 
   const poiGeoJSON = useMemo<GeoJSON.FeatureCollection>(() => {
     const filteredPois =
-      selectedCategory === 'all' || selectedCategory === 'Tất cả'
-        ? pois
-        : pois.filter((p) => p.category === selectedCategory);
+      selectedCategory === 'all' ? pois : pois.filter((p) => p.category === selectedCategory);
 
     return {
       type: 'FeatureCollection',
@@ -61,7 +59,7 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
         },
         properties: {
           id: poi.id,
-          name: typeof poi.name === 'object' ? poi.name[language] || poi.name.vi : poi.name,
+          name: typeof poi.name === 'object' ? poi.name[language] || '' : poi.name,
           category: poi.category,
         },
       })),
