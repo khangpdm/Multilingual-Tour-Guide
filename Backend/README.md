@@ -4,7 +4,7 @@ The Admin dashboard uses MySQL in `tourism_db` and the relational tables in `app
 
 ## Configure
 
-Copy `Backend/.env.example` to `Backend/.env`. Set `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, and `MYSQL_DB_NAME` (default `tourism_db`). Use a dedicated MySQL application account with privileges only on this database; do not put credentials in frontend variables or commit `.env`. The requested development seed is `ADMIN_USERNAME=admin` and `ADMIN_PASSWORD=Admin123!`. This is a public, local-demo credential: replace it with a unique strong password before deploying or sharing the server. `ADMIN_EMAIL` remains contact/audit data, not a login identifier.
+Copy `Backend/.env.example` to `Backend/.env`. Set `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, and `MYSQL_DB_NAME` (default `tourism_db`). Use a dedicated MySQL application account with privileges only on this database; do not put credentials in frontend variables or commit `.env`. The requested development seed is `ADMIN_USERNAME=admin` and `ADMIN_PASSWORD=Admin123!`. This is a public, local-demo credential: replace it with a unique strong password before deploying or sharing the server. `ADMIN_EMAIL` is now the email login identifier. Configure SMTP and the trusted frontend URL using `.env.auth.example`; see `HUY_H1_PRD_V2.md` before restarting. Super Admin requires emailed OTP; missing SMTP does not bypass MFA.
 
 Install and run from PowerShell:
 
@@ -15,7 +15,7 @@ cd Backend
 .venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-On startup the API checks MySQL, applies the safe `CREATE TABLE IF NOT EXISTS` schema and additive Admin columns, creates the system Super Admin role/permissions, and seeds the configured username. The migration adds a nullable, case-insensitively unique `users.username`; existing email data is retained. An existing local Admin matching `ADMIN_EMAIL` without a username is assigned `ADMIN_USERNAME`, preserving its password and status. Unrelated old users are not renamed; provision a unique username for them before username login. Conflicting usernames, emails or unrelated roles fail without taking over another account. Passwords use bcrypt.
+On startup the API checks MySQL, applies the safe `CREATE TABLE IF NOT EXISTS` schema and additive Admin columns, creates the system Super Admin role/permissions, and seeds the configured username. The migration adds a nullable, case-insensitively unique `users.username`; existing email data is retained. An existing local Admin matching `ADMIN_EMAIL` without a username is assigned `ADMIN_USERNAME`, preserving its password and status. Existing users now log in with their email; usernames remain only for seed/backward-compatible account identity. The additive auth migration creates three authentication tables without changing existing passwords. Old sessions require fresh login. Conflicting usernames, emails or unrelated roles fail without taking over another account. Passwords use bcrypt.
 
 Normal startup and repeated seeding never reset an existing password. To explicitly set the configured Admin password and invalidate that account's existing sessions, run from `Backend`:
 
@@ -35,16 +35,16 @@ The local role exposes only implemented endpoints. Account invitations, role ass
 
 ## Admin authentication and authorization
 
-- `POST /auth/login` accepts `username` and `password`, for example `{"username":"admin","password":"Admin123!"}`. Email login is no longer accepted. Username is trimmed and lowercased, starts with a letter or digit, and contains 3-50 ASCII letters, digits, dots, underscores or hyphens. Password whitespace is significant. Seed passwords need at least 8 characters and at most 72 UTF-8 bytes. Existing bcrypt and legacy scrypt hashes remain supported; invalid hashes and oversized bcrypt inputs fail authentication instead of raising server errors.
+- `POST /auth/login` accepts `{email,password}`. Email is normalized, password whitespace is significant. Ordinary Admins receive a session; Super Admin receives a five-minute MFA challenge and must call `POST /auth/mfa/verify` with `{challenge_token,code}` before a session is issued. Password creation/reset requires at least eight characters, letters and digits, and at most 72 UTF-8 bytes. Bcrypt and legacy scrypt verification remain supported.
 - Login requires an active account, a role with level greater than zero, and at least one implemented Admin permission. Only the reserved system `super_admin` role at level 3 receives all implemented permissions; other roles use their explicitly assigned grants. `/admin/me/permissions` returns a safe user profile, effective permissions and capabilities; capabilities describe server features, not authorization grants.
 - Each request reloads account status and role permissions. Revoking a permission immediately blocks its endpoint. Removing all Admin permissions blocks the Admin session with 403. Startup preserves revoked grants for ordinary roles. It maintains all implemented grants for Super Admin; management permissions are not automatically added to legacy local admins.
 - Tokens are random; only SHA-256 token hashes are stored in `admin_sessions`. Login replaces the session cookie presented by that browser and records last login in one transaction. It does not sign out other browsers. Expired sessions are removed during login.
 - `POST /auth/refresh` rotates a still-valid token, invalidates the old token and renews both database expiry and the cookie. Concurrent refreshes of one token have one winner. An expired session cannot be refreshed: sign in again. There is no separate long-lived refresh token. Default expiry is eight hours; configure `ADMIN_SESSION_TTL_SECONDS` between 300 and 86400. The existing frontend does not periodically refresh, so an expired browser session still requires login.
 - `POST /auth/logout` is idempotent: it removes the presented token and clears its cookie. Other browser sessions remain valid. Auth responses and permission responses use `Cache-Control: no-store`.
 - Writes require an allowed `Origin` from `ADMIN_ORIGINS`; API clients must send it along with cookies. Use the same hostname consistently (do not mix localhost and 127.0.0.1). For local curl testing use a cookie jar with `-c` on login/refresh and `-b` on later requests.
-- Login is limited to five attempts per client IP plus normalized username and thirty attempts per client IP per minute, including successful attempts; 429 includes `Retry-After`. Missing users undergo a dummy password check. This in-memory limiter assumes a single worker and a trusted proxy configuration; do not trust arbitrary forwarded client IP headers.
+- Five consecutive incorrect passwords lock the account for fifteen minutes (configurable), persisted in MySQL. A supplementary single-process limiter allows ten attempts per endpoint/IP/hashed identity and sixty auth attempts per IP per minute; 429 includes `Retry-After`. Missing users undergo a dummy password check. See `HUY_H1_PRD_V2.md` for expiry, audit, reset and multi-worker deployment details.
 
-Expected errors: 401 for invalid credentials or missing/expired session, 403 for an inactive account, no Admin access, missing endpoint permission or disallowed Origin, 422 for invalid input, 429 for throttling, and 503 for database failure. Public registration and password reset remain unavailable.
+Expected auth errors: 401 for invalid credentials/session/OTP, 403 for disabled accounts, missing permissions or disallowed Origin, 423 for temporary account lock, 400 for invalid reset links, 422 for invalid input, 429 for throttling, and 503 for unavailable MFA email/database. Password reset uses `POST /auth/forgot-password` and `POST /auth/reset-password`. Public registration remains unavailable.
 
 ## Super Admin and account management
 
@@ -74,7 +74,7 @@ Local invitations are delivered manually, not by email: the invite response
 contains a generated `username` and relative `activation_path`, displayed once
 in the Admin dialog. Share both privately with the intended recipient. The
 database stores only the invitation token hash; audit records never contain the
-token or password. After activation the recipient signs in with that username.
+token or password. After activation the recipient signs in with their email. Invitation email delivery remains outside the H1 scope; see the account-management limitations here.
 Responses under `/auth` and `/admin` are not cacheable.
 
 `capabilities.permission_catalog` lists implemented permissions for the live UI.
@@ -103,8 +103,14 @@ Tasks persist in `audio_tasks`, support retry/cancel and protect uploaded MP3s u
 
 Creation snapshots published, non-archived POIs, validates all selected locales and accepts only files uploaded to this Admin storage (no remote URL fetching). Each part is limited to 250 MB. SHA-256, size, version, build status and source fingerprint are persisted. A ready version can be published only while its source fingerprint is unchanged and all ZIP checksums match. Publication transactionally supersedes the previous release for the same zone. Withdraw marks a release superseded; previously downloaded files cannot be erased remotely. After changing or unpublishing source POIs, manually withdraw old releases and build a new version. Historical ZIPs remain immutable.
 
+Source fingerprints include the actual bytes of images and audio, not only their URLs. Builds verify each asset against its captured checksum and include an `asset_sha256` map in each ZIP manifest. Publishing and downloading also check ZIP integrity and the manifest release ID. Ready packs built before this fingerprint change must be rebuilt before publication; existing published ZIPs are not rewritten.
+
 Startup adds `source_hash`, `error`, and `poi_count` to existing release tables. Permissions are `offline.view`, `offline.manage`, and `offline.publish`; users also need `poi.view` for zone/language lookups in the UI.
 
 ## Local worker limits
 
 Run exactly one Uvicorn worker for this local implementation, without reload during active builds. Audio/pack work uses in-process background tasks and a process-local mutation lock. On restart, interrupted jobs become failed and must be retried or rebuilt. Multi-process deployment needs a durable queue and cross-process locking; do not scale this implementation as-is. Public Enduser content/manifest endpoints and mobile integration are intentionally not changed here.
+
+## Huy backend verification
+
+See [HUY_H1_PRD_V2.md](HUY_H1_PRD_V2.md) for the current H1 scope and rollout checklist. Audit snapshots and legacy audit responses omit nested secret fields. Audit date filters reject a start date after the end date. Audio retry rejects inactive languages and protected uploaded audio before scheduling work; queued tasks validate their source again before contacting TTS. Local test reports and disposable test data are not required for deployment.

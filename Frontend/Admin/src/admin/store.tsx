@@ -36,7 +36,8 @@ function seed(): Data {
   }
 }
 type Mutation = { permission: Permission; path: string; method?: string; body?: unknown; action: string; target: string; before?: unknown; after?: unknown; demo: (data: Data) => Data }
-type Store = { capabilities: Capabilities; localDatabase: boolean; tableCounts: Record<string, number>; data: Data; user: Account | null; mode: 'live' | 'demo'; ready: boolean; busy: boolean; error: string; streamStatus: string; can: (permission: Permission) => boolean; level: number; login: (username: string, password: string) => Promise<void>; logout: () => Promise<void>; enterDemo: () => void; switchRole: (role: string) => void; reload: () => Promise<void>; mutate: <T = unknown>(mutation: Mutation) => Promise<T | undefined> }
+export type MfaChallenge = { mfa_required: true; challenge_token: string; expires_in: number }
+type Store = { capabilities: Capabilities; localDatabase: boolean; tableCounts: Record<string, number>; data: Data; user: Account | null; mode: 'live' | 'demo'; ready: boolean; busy: boolean; error: string; streamStatus: string; can: (permission: Permission) => boolean; level: number; login: (email: string, password: string) => Promise<MfaChallenge | null>; verifyMfa: (challengeToken: string, code: string) => Promise<void>; logout: () => Promise<void>; enterDemo: () => void; switchRole: (role: string) => void; reload: () => Promise<void>; mutate: <T = unknown>(mutation: Mutation) => Promise<T | undefined> }
 const Context = createContext<Store | null>(null)
 export function AdminProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<Data>(emptyData)
@@ -109,7 +110,17 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     return () => { closed = true; window.clearInterval(timer) }
   }, [mode, session])
   async function reload() { if (mode === 'live' && session) { setBusy(true); try { const current = await api<Session>('/admin/me/permissions'); setSession(current); await loadLive(current); setError('') } catch (reason) { setError((reason as Error).message) } finally { setBusy(false) } } }
-  async function login(username: string, password: string) { const current = await api<Session>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }); setMode('live'); setSession(current); setError(''); try { await loadLive(current) } catch (reason) { setError((reason as Error).message) } }
+  async function acceptSession(current: Session) { generation.current++; setMode('live'); setSession(current); setError(''); try { await loadLive(current) } catch (reason) { setError((reason as Error).message) } }
+  async function login(email: string, password: string): Promise<MfaChallenge | null> {
+    const current = await api<Session | MfaChallenge>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
+    if ('mfa_required' in current) return current
+    await acceptSession(current)
+    return null
+  }
+  async function verifyMfa(challengeToken: string, code: string) {
+    const current = await api<Session>('/auth/mfa/verify', { method: 'POST', body: JSON.stringify({ challenge_token: challengeToken, code }) })
+    await acceptSession(current)
+  }
   async function logout() { if (mode === 'live') await api('/auth/logout', { method: 'POST' }); generation.current++; setSession(null); setData(emptyData); setTableCounts({}); setMode('live'); setError('') }
   function enterDemo() {
     generation.current++
@@ -139,6 +150,6 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   }
   const levels: Record<string, number> = { super_admin: 3, admin: 2, poi_manager: 1 }
   const level = data.roles.find(role => role.role_id === session?.user.role_id)?.level ?? levels[session?.user.role_id ?? ''] ?? 0
-  return <Context.Provider value={{ capabilities: session?.capabilities || {}, localDatabase: mode === 'live' && session?.capabilities?.local_database === true, tableCounts, data, user: session?.user ?? null, mode, ready, busy, error, streamStatus, can, level, login, logout, enterDemo, switchRole, reload, mutate }}>{children}</Context.Provider>
+  return <Context.Provider value={{ capabilities: session?.capabilities || {}, localDatabase: mode === 'live' && session?.capabilities?.local_database === true, tableCounts, data, user: session?.user ?? null, mode, ready, busy, error, streamStatus, can, level, login, verifyMfa, logout, enterDemo, switchRole, reload, mutate }}>{children}</Context.Provider>
 }
 export function useAdmin() { const context = useContext(Context); if (!context) throw new Error('AdminProvider is required'); return context }

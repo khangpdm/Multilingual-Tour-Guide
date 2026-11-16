@@ -3,7 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Query, Request
 
 from app.core.security import require
-from app.core.utils import fail, public
+from app.core.utils import audit_data, fail, public
 from app.db.connection import database
 
 router = APIRouter()
@@ -22,4 +22,6 @@ def audit_logs(request: Request, page: int = Query(1, ge=1), page_size: int = Qu
             except ValueError:
                 fail(422, "INVALID_DATE", "Use an ISO date with timezone.")
             filters[operator] = value
-    return {"items": [public(document) for document in database.fetch_audit_logs(filters, page, page_size)], "total": database.count_audit_logs(filters)}
+    if "from" in filters and "to" in filters and filters["from"] > filters["to"]:
+        fail(422, "INVALID_DATE", "The start date must not be after the end date.")
+    return {"items": [public(audit_data(document)) for document in database.fetch_audit_logs(filters, page, page_size)], "total": database.count_audit_logs(filters)}

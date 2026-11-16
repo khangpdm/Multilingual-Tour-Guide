@@ -7,7 +7,7 @@ export function assetUrl(path: string | null) {
 }
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number) {
+  constructor(message: string, public status: number, public code?: string) {
     super(message)
   }
 }
@@ -42,7 +42,7 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
     const body = await response.json().catch(() => null)
     if (!path.startsWith('/auth/') && (response.status === 401 || ['ACCOUNT_DEACTIVATED', 'ACCOUNT_PENDING'].includes(body?.error?.code))) window.dispatchEvent(new Event('admin-session-expired'))
     const details = body?.error?.details?.map((item: { label?: string; reason: string }) => `${item.label || 'Dữ liệu'}: ${item.reason}`).join('; ')
-    throw new ApiError(`${body?.error?.message || responseError(response.status)}${details ? ` — ${details}` : ''}${response.status === 429 ? ` (thử lại sau ${response.headers.get('Retry-After') || 'ít'} giây)` : ''}`, response.status)
+    throw new ApiError(`${body?.error?.message || responseError(response.status)}${details ? ` — ${details}` : ''}${response.status === 429 ? ` (thử lại sau ${response.headers.get('Retry-After') || 'ít'} giây)` : ''}`, response.status, body?.error?.code)
   }
   if (response.status === 204) return undefined as T
   if (!response.headers.get('Content-Type')?.includes('application/json')) throw new Error('Chưa kết nối được máy chủ quản trị. Kiểm tra cấu hình máy chủ.')

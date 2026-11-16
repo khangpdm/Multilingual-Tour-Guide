@@ -74,6 +74,12 @@ def execute_task(task_id, user):
             options = json.loads(task["options"]) if isinstance(task["options"], str) else task["options"]
             if not content.get("text"):
                 raise ValueError("Content is missing.")
+            if not database.fetch_one("languages", {"_id": locale, "is_active": True}):
+                raise ValueError("Language is no longer active.")
+            if text_hash(content) != options["text_hash"] or content.get("audio_sha256") != options.get("audio_sha256"):
+                raise ValueError("Content or audio changed during generation. Generate again.")
+            if content.get("audio_source") == "UPLOADED" and not options.get("replace_uploaded_audio"):
+                raise ValueError("Uploaded audio is protected.")
             query("UPDATE audio_tasks SET state='PROCESSING',progress=15,started_at=UTC_TIMESTAMP(3) WHERE id=%s", (task_id,))
         headers = {"Content-Type": "application/json", "Accept": "audio/mpeg"}
         if settings.get("TTS_API_KEY"):
@@ -160,6 +166,10 @@ def retry(task_id: str, background: BackgroundTasks, user=Depends(require("audio
         if not content.get("text"):
             fail(422, "MISSING_CONTENT", "Save a script first.")
         options = json.loads(task["options"]) if isinstance(task["options"], str) else task["options"]
+        if not database.fetch_one("languages", {"_id": task["language_code"], "is_active": True}):
+            fail(422, "INVALID_LANGUAGE", "Save content for an active language first.")
+        if content.get("audio_source") == "UPLOADED" and not options.get("replace_uploaded_audio"):
+            fail(409, "UPLOADED_AUDIO_PROTECTED", "Uploaded audio is protected.")
         options.update(text_hash=text_hash(content), audio_sha256=content.get("audio_sha256"))
         try:
             query("UPDATE audio_tasks SET state='QUEUED',progress=0,error=NULL,started_at=NULL,finished_at=NULL,retry_count=retry_count+1,options=%s WHERE id=%s", (json.dumps(options), task_id))

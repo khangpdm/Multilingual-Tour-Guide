@@ -2,6 +2,7 @@ import hashlib
 import json
 import re
 import zipfile
+import zlib
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -50,6 +51,7 @@ def snapshot(zone_id, locales):
         if not database.fetch_one("languages", {"_id": locale, "is_active": True}):
             fail(422, "INACTIVE_LANGUAGE", f"Language {locale} is not active.")
     pois = []
+    assets = {}
     for record in database.fetch_all("pois", {"zone_id": zone_id}):
         if record.get("status") not in {"active", "published"} or record.get("is_archived"):
             continue
@@ -62,27 +64,37 @@ def snapshot(zone_id, locales):
         poi.pop("content_status", None)
         poi["content"] = {locale: poi["content"][locale] for locale in sorted(locales)}
         for image in poi["images"]:
-            asset_path(image)
+            assets[image] = hashlib.sha256(asset_path(image).read_bytes()).hexdigest()
         for content in poi["content"].values():
             path = asset_path(content["audio_url"])
-            if hashlib.sha256(path.read_bytes()).hexdigest() != content["audio_sha256"]:
+            checksum = hashlib.sha256(path.read_bytes()).hexdigest()
+            if checksum != content["audio_sha256"]:
                 fail(422, "ASSET_CHANGED", "Audio checksum does not match. Upload it again.")
+            assets[content["audio_url"]] = checksum
         pois.append(poi)
     if not pois:
         fail(422, "EMPTY_ZONE", "This zone has no published POIs.")
-    result = {"schema_version": 1, "zone": public(zone), "locales": sorted(locales), "pois": sorted(pois, key=lambda poi: poi["poi_id"])}
+    result = {"schema_version": 1, "zone": public(zone), "locales": sorted(locales), "pois": sorted(pois, key=lambda poi: poi["poi_id"]), "assets": assets}
     encoded = json.dumps(result, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     return result, hashlib.sha256(encoded).hexdigest()
 
 
-def zip_bundle(path, manifest, urls):
-    paths = [asset_path(url) for url in sorted(set(urls))]
-    if sum(resource.stat().st_size for resource in paths) > PACK_LIMIT:
+def zip_bundle(path, manifest, urls, expected_assets):
+    resources = [(url, asset_path(url)) for url in sorted(set(urls))]
+    if sum(resource.stat().st_size for _, resource in resources) > PACK_LIMIT:
         fail(422, "PACK_TOO_LARGE", "A pack part may not exceed 250 MB. Split the zone.")
+    manifest = {**manifest, "asset_sha256": {"assets/" + resource.name: expected_assets[url] for url, resource in resources}}
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
-        for resource in paths:
-            archive.write(resource, "assets/" + resource.name)
+        total_size = 0
+        for url, resource in resources:
+            data = resource.read_bytes()
+            total_size += len(data)
+            if total_size > PACK_LIMIT:
+                fail(422, "PACK_TOO_LARGE", "A pack part may not exceed 250 MB. Split the zone.")
+            if hashlib.sha256(data).hexdigest() != expected_assets[url]:
+                fail(409, "ASSET_CHANGED", "Source resources changed. Build a new version.")
+            archive.writestr("assets/" + resource.name, data)
     return hashlib.sha256(path.read_bytes()).hexdigest(), path.stat().st_size
 
 
@@ -96,11 +108,11 @@ def build_release(release_id, data):
         for poi in data["pois"]:
             common.append({**{key: value for key, value in poi.items() if key != "content"}, "images": ["assets/" + Path(image).name for image in poi["images"]], "cover_image": "assets/" + Path(poi["cover_image"]).name})
             images.extend(poi["images"])
-        checksum, size = zip_bundle(PACK_ROOT / f"{release_id}-common.zip", {**base, "pois": common}, images)
+        checksum, size = zip_bundle(PACK_ROOT / f"{release_id}-common.zip", {**base, "pois": common}, images, data["assets"])
         for locale in data["locales"]:
             audio = [poi["content"][locale]["audio_url"] for poi in data["pois"]]
             content = [{"poi_id": poi["poi_id"], **poi["content"][locale], "audio_url": "assets/" + Path(poi["content"][locale]["audio_url"]).name} for poi in data["pois"]]
-            locale_hash, locale_size = zip_bundle(PACK_ROOT / f"{release_id}-{locale}.zip", {**base, "language": locale, "content": content}, audio)
+            locale_hash, locale_size = zip_bundle(PACK_ROOT / f"{release_id}-{locale}.zip", {**base, "language": locale, "content": content}, audio, data["assets"])
             query("UPDATE offline_pack_languages SET status='ready',file_url=%s,sha256=%s,size_bytes=%s,built_at=UTC_TIMESTAMP(3) WHERE release_id=%s AND language_code=%s", (f"/admin/offline-packs/{release_id}/files/{locale}", locale_hash, locale_size, release_id, locale))
         query("UPDATE offline_pack_releases SET status='ready',common_file_url=%s,common_sha256=%s,common_size_bytes=%s,built_at=UTC_TIMESTAMP(3),error=NULL WHERE id=%s", (f"/admin/offline-packs/{release_id}/files/common", checksum, size, release_id))
     except Exception as error:
@@ -146,6 +158,17 @@ def verify_bundle(release_id, part, checksum):
     path = PACK_ROOT / f"{release_id}-{part}.zip"
     if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != checksum:
         fail(409, "PACK_MISSING", "Pack is missing or changed. Build a new version.")
+    try:
+        with zipfile.ZipFile(path) as archive:
+            if archive.testzip() is not None:
+                fail(409, "PACK_INVALID", "Pack is damaged. Build a new version.")
+            if "manifest.json" not in archive.namelist():
+                fail(409, "PACK_INVALID", "Pack manifest is missing. Build a new version.")
+            manifest = json.loads(archive.read("manifest.json"))
+            if not isinstance(manifest, dict) or manifest.get("release_id") != release_id:
+                fail(409, "PACK_INVALID", "Pack manifest does not match this release.")
+    except (zipfile.BadZipFile, OSError, RuntimeError, EOFError, zlib.error, ValueError):
+        fail(409, "PACK_INVALID", "Pack is damaged. Build a new version.")
     return path
 
 
