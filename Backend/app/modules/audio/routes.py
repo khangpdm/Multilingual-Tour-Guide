@@ -13,7 +13,7 @@ from app.core.security import require
 from app.core.state import mutation_lock
 from app.core.utils import audit, fail, identifier, now, public, update_record
 from app.db.connection import database
-from app.modules.media.storage import AUDIO_LIMIT, checked_mp3, store_bytes
+from app.modules.audio.storage import AUDIO_LIMIT, checked_mp3, store_audio_bytes
 from app.modules.pois.routes import editable_poi
 from app.schemas.base import Input
 
@@ -92,7 +92,7 @@ def execute_task(task_id, user):
                 raise ValueError("Content or audio changed during generation. Generate again.")
             if current.get("audio_source") == "UPLOADED" and not options.get("replace_uploaded_audio"):
                 raise ValueError("Uploaded audio is protected.")
-            url, checksum = store_bytes(data, "mp3")
+            url, checksum = store_audio_bytes(data)
             update_record("pois", task["poi_id"], {"content." + locale: {**current, "audio_url": url, "audio_sha256": checksum, "audio_source": "TTS", "updated_at": now()}, "last_modified_by": user["user_id"]}, user, "audio.completed")
             query("UPDATE audio_tasks SET state='COMPLETED',progress=100,error=NULL,finished_at=UTC_TIMESTAMP(3) WHERE id=%s", (task_id,))
     except Exception as error:

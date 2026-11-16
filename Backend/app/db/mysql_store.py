@@ -233,6 +233,8 @@ class MySQLDatabase:
         with self.connection() as conn, conn.cursor() as cur:
             for statement in schema.read_text(encoding="utf-8").split(";"):
                 if statement.strip():
+                    if re.match(r"\s*CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\b", statement, re.IGNORECASE):
+                        statement = self._align_foreign_key_columns(cur, statement)
                     cur.execute(statement)
             self._ensure_column(cur, "users", "password_salt", "CHAR(32) NULL")
             self._ensure_column(cur, "users", "full_name", "VARCHAR(255) NULL")
@@ -263,6 +265,45 @@ class MySQLDatabase:
                 cur.execute("INSERT INTO roles (id,name,level,is_system) VALUES ('super_admin','Super Admin',3,TRUE)")
             for permission in PERMISSIONS:
                 cur.execute("INSERT IGNORE INTO role_permissions (role_id,permission_id) VALUES ('super_admin',%s)", (permission,))
+
+    def _align_foreign_key_columns(self, cursor, statement):
+        foreign_keys = re.findall(
+            r"FOREIGN\s+KEY\s*\(\s*`?([A-Za-z0-9_]+)`?\s*\)\s*"
+            r"REFERENCES\s+`?([A-Za-z0-9_]+)`?\s*\(\s*`?([A-Za-z0-9_]+)`?\s*\)",
+            statement,
+            flags=re.IGNORECASE,
+        )
+        for local_column, referenced_table, referenced_column in foreign_keys:
+            cursor.execute(
+                "SELECT COLUMN_TYPE, CHARACTER_SET_NAME, COLLATION_NAME "
+                "FROM INFORMATION_SCHEMA.COLUMNS "
+                "WHERE TABLE_SCHEMA=%s AND TABLE_NAME=%s AND COLUMN_NAME=%s",
+                (self.name, referenced_table, referenced_column),
+            )
+            metadata = cursor.fetchone()
+            if not metadata:
+                continue
+
+            column_type = metadata["COLUMN_TYPE"]
+            if not re.fullmatch(r"(?:char|varchar)\(\d+\)", column_type, re.IGNORECASE):
+                raise RuntimeError(
+                    f"The {referenced_table}.{referenced_column} column must be CHAR or VARCHAR."
+                )
+
+            definition = column_type
+            if metadata["CHARACTER_SET_NAME"]:
+                definition += f" CHARACTER SET {metadata['CHARACTER_SET_NAME']}"
+            if metadata["COLLATION_NAME"]:
+                definition += f" COLLATE {metadata['COLLATION_NAME']}"
+
+            statement = re.sub(
+                rf"\b{re.escape(local_column)}\s+(?:CHAR|VARCHAR)\(\d+\)",
+                lambda match: match.group(0).split()[0] + " " + definition,
+                statement,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+        return statement
 
     def _ensure_column(self, cursor, table, column, definition):
         cursor.execute(

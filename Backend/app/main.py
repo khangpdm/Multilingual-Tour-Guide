@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-
+from app.modules.audio.uploads import router as audio_upload_router
 from app.api.errors import install_exception_handlers
 from app.core.config import ORIGINS
 from app.core.lifecycle import lifespan
@@ -49,5 +49,6 @@ app.include_router(pois_router)
 app.include_router(audit_router)
 app.include_router(media_router)
 app.include_router(audio_router)
+app.include_router(audio_upload_router)
 app.include_router(offline_router)
 app.include_router(management_router)
