@@ -2,6 +2,7 @@ import { IconMapPin } from '@/components/Icons';
 import { formatDistance, haversineDistance } from '@/data/pois';
 import { POI } from '@/services/poiService';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 
 interface NearbyPOIProps {
@@ -19,6 +20,7 @@ export default function NearbyPOI({
   userLng,
   onSelectPOI,
 }: NearbyPOIProps) {
+  const { t } = useTranslation();
   if (nearbyPOIs.length === 0) return null;
 
   return (
@@ -26,7 +28,7 @@ export default function NearbyPOI({
       <View className="flex-row items-center gap-2 rounded-t-xl bg-orange-500 px-3 py-1.5">
         <IconMapPin size={12} color="#FFFFFF" />
         <Text className="text-xs font-semibold text-white">
-          Ở gần bạn • {nearbyPOIs.length} địa điểm
+          {t('home.nearbyCount', { count: nearbyPOIs.length })}
         </Text>
       </View>
 
@@ -39,9 +41,7 @@ export default function NearbyPOI({
         >
           {nearbyPOIs.map((p) => {
             const poiName =
-              typeof p.name === 'object'
-                ? p.name[language as keyof typeof p.name] || p.name.vi
-                : p.name;
+              typeof p.name === 'object' ? p.name[language as keyof typeof p.name] || '' : p.name;
             const distanceStr = formatDistance(haversineDistance(userLat, userLng, p.lat, p.lng));
 
             return (

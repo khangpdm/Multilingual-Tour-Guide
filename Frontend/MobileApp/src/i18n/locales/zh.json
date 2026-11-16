@@ -1,0 +1,141 @@
+{
+  "common": {
+    "home": "首页",
+    "explore": "探索",
+    "scanQR": "扫描二维码",
+    "downloads": "下载",
+    "settings": "设置",
+    "loading": "加载中...",
+    "cancel": "取消",
+    "confirm": "确认"
+  },
+  "home": {
+    "title": "探索城市",
+    "subtitle": "发现身边有趣的景点",
+    "nearby": "附近景点",
+    "featured": "精选景点",
+    "searchPlaceholder": "搜索地址或地点...",
+    "nearbyCount": "附近 · {{count}} 个地点"
+  },
+  "explore": {
+    "title": "探索",
+    "searchPlaceholder": "搜索地点...",
+    "allCategories": "全部",
+    "noResults": "未找到地点",
+    "nearest": "距离最近",
+    "alphabetical": "A–Z",
+    "emptyTitle": "未找到地点",
+    "emptyHint": "请尝试更改筛选条件或搜索关键词",
+    "clearFilters": "清除筛选"
+  },
+  "categories": {
+    "all": "全部",
+    "landmark": "历史古迹",
+    "museum": "博物馆",
+    "religious": "宗教场所",
+    "architecture": "建筑",
+    "park": "公园",
+    "food": "美食"
+  },
+  "settings": {
+    "title": "设置",
+    "language": "语言",
+    "selectLanguage": "选择语言",
+    "autoPlay": "自动播放讲解",
+    "gpsAutoplay": "GPS与自动播放",
+    "voice": "语音讲解声音",
+    "offline": "离线内容",
+    "languageDescription": "界面与讲解语言",
+    "autoPlayNearby": "靠近时自动播放",
+    "autoPlayDescription": "进入触发范围时播放讲解",
+    "activationRadius": "触发半径",
+    "radiusNote": "触发范围（非 GPS 精度）",
+    "locationMode": "位置更新模式",
+    "locationModes": {
+      "battery": {
+        "title": "省电",
+        "description": "精度较低"
+      },
+      "balanced": {
+        "title": "均衡",
+        "description": "默认"
+      },
+      "accuracy": {
+        "title": "高精度",
+        "description": "更耗电"
+      }
+    },
+    "gpsNote": "应用无法超越设备硬件能力提升 GPS 精度。",
+    "wifiOnly": "仅通过 Wi-Fi 下载",
+    "saveMobileData": "节省移动数据",
+    "downloadedStorage": "已下载容量",
+    "manageOffline": "管理离线包",
+    "voiceCompatibility": "兼容语音：",
+    "readingSpeed": "语速",
+    "listenTest": "试听语音",
+    "vietnamese": "越南语"
+  },
+  "qr": {
+    "checkingPermission": "正在检查相机权限...",
+    "permissionTitle": "需要相机访问权限",
+    "permissionDescription": "允许应用使用相机扫描旅游景点二维码。",
+    "grantPermission": "授予相机权限",
+    "title": "扫描景点二维码",
+    "turnFlashOff": "关闭闪光灯",
+    "turnFlashOn": "打开闪光灯",
+    "retry": "重新扫描",
+    "instructions": "扫描说明",
+    "step1Title": "将相机对准二维码",
+    "step1Description": "请将完整二维码放入取景框，并确保光线充足。",
+    "step2Title": "打开景点讲解",
+    "step2Description": "应用会识别二维码并打开对应地点。",
+    "status": {
+      "idle": "请将景点二维码放入取景框内",
+      "scanning": "正在处理二维码...",
+      "success": "已找到景点，正在打开...",
+      "invalid": "二维码无效或暂不支持",
+      "missing": "未找到对应景点"
+    }
+  },
+  "download": {
+    "title": "离线内容",
+    "downloaded": "已下载 45 MB",
+    "packageCount": "已下载 1 个 / 共 6 个可用",
+    "wifiOnly": "仅在 Wi-Fi 连接时下载",
+    "region": "胡志明市 · 第一郡",
+    "points": "{{count}} 个地点",
+    "remaining": "剩余 {{size}}",
+    "status": {
+      "downloaded": "已下载",
+      "downloading": "取消",
+      "available": "下载"
+    },
+    "downloadInProgress": "下载中",
+    "regionTitle": "第一郡 - 历史中心"
+  },
+  "detail": {
+    "notFound": "未找到地点：{{poiId}}",
+    "back": "返回",
+    "place": "地点",
+    "downloaded": "已下载",
+    "downloadOffline": "下载离线内容",
+    "map": "地图",
+    "noMapLink": "此地点暂无地图链接。",
+    "openMapError": "无法打开地图链接，请重试。",
+    "distanceFromYou": "距您 {{distance}}",
+    "openMap": "打开地图",
+    "audioNarration": "语音讲解",
+    "narrationProgress": "讲解进度",
+    "speed": "{{rate}} 倍速",
+    "pauseNarration": "暂停讲解",
+    "playNarration": "播放讲解",
+    "playerDescription": "智能音频播放器 · 支持多语言和自动合成",
+    "introduction": "简介",
+    "collapse": "收起 ↑",
+    "readMore": "查看更多 ↓",
+    "noDescription": "暂无此语言的介绍。",
+    "listenNarration": "收听讲解",
+    "viewDetails": "查看详情",
+    "noAudio": "此地点暂无语音讲解。"
+  }
+}

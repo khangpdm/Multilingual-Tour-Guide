@@ -1,27 +1,32 @@
 import { IconCheck, IconClose, IconSearch } from '@/components/Icons';
+import { useTranslation } from 'react-i18next';
 import {
-  CATEGORY_COLORS,
-  POIS,
   formatDistance,
   haversineDistance,
-  type Category,
-  type POI,
+  CATEGORY_LABEL_KEYS,
+  CATEGORY_COLORS_BY_CODE,
 } from '@/data/pois';
 import { useApp } from '@/store/AppContext';
 import React, { useMemo } from 'react';
 import { FlatList, Image, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-const CATEGORIES = [
-  'Tất cả',
-  'Di tích',
-  'Bảo tàng',
-  'Tôn giáo',
-  'Kiến trúc',
-  'Công viên',
-  'Ẩm thực',
-];
+const CATEGORIES = ['all', 'landmark', 'museum', 'religious', 'architecture', 'park', 'food'];
+
+const getLocalizedText = (
+  value: Record<string, string | null> | string | undefined,
+  language: string
+): string => {
+  if (!value) return '';
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  return value[language] ?? '';
+};
 
 export default function ExploreScreen() {
+  const { t } = useTranslation();
   const {
     exploreSearch,
     setExploreSearch,
@@ -34,16 +39,23 @@ export default function ExploreScreen() {
     userLat,
     userLng,
     downloads,
+    pois,
   } = useApp();
 
   const filteredPOIs = useMemo(() => {
     const q = exploreSearch.trim().toLowerCase();
 
-    const list = POIS.filter((p) => {
-      const matchCat = exploreCategory === 'Tất cả' || p.category === exploreCategory;
-      const nameMatch = p.name[language]?.toLowerCase().includes(q);
-      const addressMatch = p.address?.toLowerCase().includes(q);
+    const list = pois.filter((p) => {
+      const matchCat = exploreCategory === 'all' || p.category === exploreCategory;
+
+      const name = getLocalizedText(p.name, language);
+      const nameMatch = name.toLowerCase().includes(q);
+
+      const address = getLocalizedText(p.address, language);
+      const addressMatch = address.toLowerCase().includes(q);
+
       const matchQ = !q || nameMatch || addressMatch;
+
       return matchCat && matchQ;
     });
 
@@ -54,16 +66,16 @@ export default function ExploreScreen() {
           haversineDistance(userLat, userLng, b.lat, b.lng)
         );
       }
-      return (a.name[language] ?? '').localeCompare(b.name[language] ?? '');
+      return getLocalizedText(a.name, language).localeCompare(getLocalizedText(b.name, language));
     });
-  }, [exploreCategory, exploreSearch, exploreSort, language, userLat, userLng]);
+  }, [pois, exploreCategory, exploreSearch, exploreSort, language, userLat, userLng]);
 
   const isDownloaded = (poiId: string) => {
     const pkg = `q1-${language}`;
     return downloads[pkg] === 'done';
   };
 
-  const renderItem = ({ item: poi }: { item: POI }) => {
+  const renderItem = ({ item: poi }: { item: (typeof pois)[number] }) => {
     const dist = haversineDistance(userLat, userLng, poi.lat, poi.lng);
     const downloaded = isDownloaded(poi.id);
 
@@ -85,20 +97,27 @@ export default function ExploreScreen() {
           <View className="flex-row flex-wrap items-center justify-between gap-1.5">
             <View
               className="px-2 py-1 rounded-md"
-              style={{ backgroundColor: CATEGORY_COLORS[poi.category] }}
+              style={{
+                backgroundColor: CATEGORY_COLORS_BY_CODE[poi.category] ?? '#6b7280',
+              }}
             >
-              <Text className="text-xs leading-4 font-semibold text-white">{poi.category}</Text>
+              <Text className="text-xs leading-4 font-semibold text-white">
+                {t(
+                  CATEGORY_LABEL_KEYS[poi.category as keyof typeof CATEGORY_LABEL_KEYS] ??
+                    'categories.landmark'
+                )}
+              </Text>
             </View>
             <Text className="text-xs leading-4 text-gray-500 font-medium flex-none">
               {formatDistance(dist)}
             </Text>
           </View>
           <Text className="text-base leading-[22px] font-bold text-gray-800 mt-2" numberOfLines={2}>
-            {poi.name[language] ?? ''}
+            {getLocalizedText(poi.name, language)}
           </Text>
-          {poi.shortDesc?.[language] && (
+          {!!getLocalizedText(poi.description, language) && (
             <Text className="text-sm leading-5 text-gray-500 mt-1" numberOfLines={2}>
-              {poi.shortDesc[language]}
+              {getLocalizedText(poi.description, language)}
             </Text>
           )}
         </View>
@@ -111,7 +130,9 @@ export default function ExploreScreen() {
       {/* Header */}
       <View className="flex-none bg-white px-4 pt-4 border-b border-gray-100">
         <View className="flex-row flex-wrap items-center justify-between gap-3 mb-4">
-          <Text className="text-[28px] leading-9 font-bold text-gray-800">Khám phá</Text>
+          <Text className="text-[28px] leading-9 font-bold text-gray-800">
+            {t('explore.title')}
+          </Text>
           <View className="flex-row items-center gap-1 rounded-xl bg-gray-100 p-1">
             {(['distance', 'name'] as const).map((s) => {
               const selected = exploreSort === s;
@@ -127,7 +148,7 @@ export default function ExploreScreen() {
                       selected ? 'text-teal-600' : 'text-gray-500'
                     }`}
                   >
-                    {s === 'distance' ? 'Gần nhất' : 'A–Z'}
+                    {s === 'distance' ? t('explore.nearest') : t('explore.alphabetical')}
                   </Text>
                 </TouchableOpacity>
               );
@@ -141,7 +162,7 @@ export default function ExploreScreen() {
           <TextInput
             value={exploreSearch}
             onChangeText={setExploreSearch}
-            placeholder="Tìm địa điểm…"
+            placeholder={t('explore.searchPlaceholder')}
             placeholderTextColor="#9ca3af"
             className="flex-1 text-base text-gray-700 py-0 m-0"
           />
@@ -160,7 +181,8 @@ export default function ExploreScreen() {
         >
           {CATEGORIES.map((cat) => {
             const active = exploreCategory === cat;
-            const color = cat !== 'Tất cả' ? CATEGORY_COLORS[cat as Category] : '#0d9488';
+
+            const color = cat !== 'all' ? (CATEGORY_COLORS_BY_CODE[cat] ?? '#6b7280') : '#0d9488';
             return (
               <TouchableOpacity
                 key={cat}
@@ -175,7 +197,9 @@ export default function ExploreScreen() {
                     active ? 'text-white' : 'text-gray-600'
                   }`}
                 >
-                  {cat}
+                  {cat === 'all'
+                    ? t('categories.all')
+                    : t(CATEGORY_LABEL_KEYS[cat as keyof typeof CATEGORY_LABEL_KEYS])}
                 </Text>
               </TouchableOpacity>
             );
@@ -192,19 +216,21 @@ export default function ExploreScreen() {
           <View className="flex flex-col items-center justify-center px-4 py-16">
             <Text className="text-4xl mb-3">🔍</Text>
             <Text className="text-base text-center text-gray-700 font-semibold">
-              Không tìm thấy địa điểm nào
+              {t('explore.emptyTitle')}
             </Text>
             <Text className="text-gray-500 text-sm leading-5 text-center mt-2">
-              Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm
+              {t('explore.emptyHint')}
             </Text>
             <TouchableOpacity
               onPress={() => {
                 setExploreSearch('');
-                setExploreCategory('Tất cả');
+                setExploreCategory('all');
               }}
               className="mt-5 px-5 py-3 bg-teal-50 rounded-full"
             >
-              <Text className="text-teal-600 text-sm font-semibold">Xóa bộ lọc</Text>
+              <Text className="text-teal-600 text-sm font-semibold">
+                {t('explore.clearFilters')}
+              </Text>
             </TouchableOpacity>
           </View>
         }

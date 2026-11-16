@@ -7,6 +7,7 @@ import {
   IconWifi,
 } from '@/components/Icons';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Image, Pressable, ScrollView, Text, View } from 'react-native';
 
 type DownloadStatus = 'downloaded' | 'downloading' | 'available';
@@ -28,7 +29,7 @@ const INITIAL_REGIONS: Region[] = [
   {
     id: 'history',
     city: 'QUẬN 1',
-    title: 'Quận 1 - Trung tâm lịch sử',
+    title: 'download.regionTitle',
     language: 'VN',
     languageName: 'Tiếng Việt',
     points: 8,
@@ -65,13 +66,14 @@ const INITIAL_REGIONS: Region[] = [
 ];
 
 function RegionCard({ region, onAction }: { region: Region; onAction: () => void }) {
+  const { t } = useTranslation();
   const progress = region.progress ?? 0;
   const statusLabel =
     region.status === 'downloaded'
-      ? 'Đã tải xong'
+      ? t('download.status.downloaded')
       : region.status === 'downloading'
-        ? 'Hủy'
-        : 'Tải xuống';
+        ? t('download.status.downloading')
+        : t('download.status.available');
 
   return (
     <View className="mb-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -86,7 +88,9 @@ function RegionCard({ region, onAction }: { region: Region; onAction: () => void
 
         {region.status === 'downloading' && (
           <View className="absolute right-3 top-3 rounded-full bg-sky-500 px-2.5 py-1">
-            <Text className="text-[11px] font-bold text-white">Đang tải</Text>
+            <Text className="text-[11px] font-bold text-white">
+              {t('download.downloadInProgress')}
+            </Text>
           </View>
         )}
         {region.status === 'downloaded' && (
@@ -103,10 +107,14 @@ function RegionCard({ region, onAction }: { region: Region; onAction: () => void
 
       {/* Phần Nội dung */}
       <View className="p-4">
-        <Text className="text-[15px] font-bold text-slate-800">{region.title}</Text>
+        <Text className="text-[15px] font-bold text-slate-800">
+          {region.title.startsWith('download.') ? t(region.title) : region.title}
+        </Text>
 
         <View className="mt-1.5 flex-row items-center">
-          <Text className="text-[12px] text-slate-500">{region.points} địa điểm</Text>
+          <Text className="text-[12px] text-slate-500">
+            {t('download.points', { count: region.points })}
+          </Text>
           <Text className="mx-2 text-[12px] text-slate-300">•</Text>
           <Text className="text-[12px] text-slate-500">{region.size}</Text>
         </View>
@@ -117,7 +125,7 @@ function RegionCard({ region, onAction }: { region: Region; onAction: () => void
               <View className="h-full rounded-full bg-teal-500" style={{ width: `${progress}%` }} />
             </View>
             <Text className="mt-1.5 text-[11px] text-teal-600 font-medium">
-              {progress}% · 18.2 MB còn lại
+              {progress}% · {t('download.remaining', { size: '18.2 MB' })}
             </Text>
           </>
         )}
@@ -168,6 +176,7 @@ function RegionCard({ region, onAction }: { region: Region; onAction: () => void
 }
 
 export default function DownloadScreen() {
+  const { t } = useTranslation();
   const [regions, setRegions] = useState(INITIAL_REGIONS);
 
   const updateRegion = (id: string) => {
@@ -186,7 +195,7 @@ export default function DownloadScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="pb-6">
         {/* Header Tổng quan */}
         <View className="bg-white px-4 pb-4 pt-3 border-b border-slate-100">
-          <Text className="text-[20px] font-extrabold text-slate-900">Nội dung offline</Text>
+          <Text className="text-[20px] font-extrabold text-slate-900">{t('download.title')}</Text>
 
           <View className="mt-3 flex-row items-center justify-between rounded-2xl bg-teal-50 px-4 py-3">
             <View className="flex-row items-center">
@@ -194,8 +203,12 @@ export default function DownloadScreen() {
                 <IconDownload size={20} color="#0d9488" />
               </View>
               <View>
-                <Text className="text-[13px] font-bold text-teal-700">45 MB đã tải</Text>
-                <Text className="mt-0.5 text-[11px] text-teal-600">1 gói / 6 gói khả dụng</Text>
+                <Text className="text-[13px] font-bold text-teal-700">
+                  {t('download.downloaded')}
+                </Text>
+                <Text className="mt-0.5 text-[11px] text-teal-600">
+                  {t('download.packageCount')}
+                </Text>
               </View>
             </View>
             <Pressable className="flex-row items-center rounded-full bg-teal-500 px-4 py-2">
@@ -206,14 +219,14 @@ export default function DownloadScreen() {
 
           <View className="mt-2.5 flex-row items-center justify-center">
             <IconFlash size={12} color="#f97316" />
-            <Text className="ml-1.5 text-[11px] text-slate-400">Chỉ tải khi kết nối Wi-Fi</Text>
+            <Text className="ml-1.5 text-[11px] text-slate-400">{t('download.wifiOnly')}</Text>
           </View>
         </View>
 
         {/* Tiêu đề khu vực */}
         <View className="bg-slate-100 px-4 py-2.5">
           <Text className="text-[12px] font-bold uppercase tracking-wider text-slate-500">
-            TP. Hồ Chí Minh · Quận 1
+            {t('download.region')}
           </Text>
         </View>
 

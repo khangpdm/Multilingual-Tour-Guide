@@ -3,15 +3,12 @@ import { LocationMode } from '@/store/AppContext';
 import React from 'react';
 import { PanResponder, Pressable, Text, View } from 'react-native';
 import SettingsToggle from './SettingsToggle';
+import { useTranslation } from 'react-i18next';
 
 const MIN_RADIUS = 20;
 const MAX_RADIUS = 500;
 
-const locationModes: { id: LocationMode; title: string; description: string }[] = [
-  { id: 'battery', title: 'Tiết kiệm pin', description: 'Ít chính xác hơn' },
-  { id: 'balanced', title: 'Cân bằng', description: 'Mặc định' },
-  { id: 'accuracy', title: 'Độ chính xác cao', description: 'Tốn pin hơn' },
-];
+const locationModes: LocationMode[] = ['battery', 'balanced', 'accuracy'];
 
 export default function GpsSettings({
   autoPlay,
@@ -28,6 +25,7 @@ export default function GpsSettings({
   locationMode: LocationMode;
   onLocationModeChange: (mode: LocationMode) => void;
 }) {
+  const { t } = useTranslation();
   const [sliderWidth, setSliderWidth] = React.useState(0);
   const radiusPanResponder = React.useMemo(() => {
     const dragState = { startPosition: 0 };
@@ -58,10 +56,10 @@ export default function GpsSettings({
         <View className="flex-row items-center justify-between">
           <View>
             <Text className="text-[12px] font-semibold text-[#102d4f]">
-              Tự động phát khi đến gần
+              {t('settings.autoPlayNearby')}
             </Text>
             <Text className="mt-[3px] text-[10px] text-[#8796ad]">
-              Phát thuyết minh khi vào vùng kích hoạt
+              {t('settings.autoPlayDescription')}
             </Text>
           </View>
           <SettingsToggle value={autoPlay} onChange={onAutoPlayChange} />
@@ -69,12 +67,14 @@ export default function GpsSettings({
 
         <View className="mt-[18px]">
           <View className="flex-row items-center justify-between">
-            <Text className="text-[12px] font-semibold text-[#102d4f]">Bán kính kích hoạt</Text>
+            <Text className="text-[12px] font-semibold text-[#102d4f]">
+              {t('settings.activationRadius')}
+            </Text>
             <Text className="text-[12px] font-bold text-[#0aa99d]">{triggerRadius} m</Text>
           </View>
           <View
             {...radiusPanResponder.panHandlers}
-            accessibilityLabel="Bán kính kích hoạt"
+            accessibilityLabel={t('settings.activationRadius')}
             accessibilityRole="adjustable"
             onLayout={(event) => setSliderWidth(event.nativeEvent.layout.width)}
             className="h-[30px] justify-center"
@@ -102,31 +102,33 @@ export default function GpsSettings({
               <View className="h-2 w-2 rounded-full bg-[#ff9f32]" />
             </View>
           </View>
-          <Text className="mt-[10px] text-[9px] text-[#8796ad]">
-            Bán kính hoạt động (không phải độ chính xác GPS)
-          </Text>
+          <Text className="mt-[10px] text-[9px] text-[#8796ad]">{t('settings.radiusNote')}</Text>
         </View>
       </View>
 
       <View className="border-t border-[#f0f2f5] p-[14px]">
         <Text className="mb-2 text-[12px] font-semibold text-[#102d4f]">
-          Chế độ cập nhật vị trí
+          {t('settings.locationMode')}
         </Text>
         <View className="gap-[6px]">
           {locationModes.map((mode) => {
-            const selected = mode.id === locationMode;
+            const selected = mode === locationMode;
             return (
               <Pressable
-                key={mode.id}
-                onPress={() => onLocationModeChange(mode.id)}
+                key={mode}
+                onPress={() => onLocationModeChange(mode)}
                 className={`min-h-[44px] rounded-[10px] border px-[11px] py-[7px] ${
                   selected ? 'border-[#0aa99d] bg-[#effcfb]' : 'border-[#edf0f4] bg-[#f8fafc]'
                 }`}
               >
                 <View className="flex-row items-center justify-between">
                   <View>
-                    <Text className="text-[11px] font-semibold text-[#102d4f]">{mode.title}</Text>
-                    <Text className="mt-0.5 text-[9px] text-[#8796ad]">{mode.description}</Text>
+                    <Text className="text-[11px] font-semibold text-[#102d4f]">
+                      {t(`settings.locationModes.${mode}.title`)}
+                    </Text>
+                    <Text className="mt-0.5 text-[9px] text-[#8796ad]">
+                      {t(`settings.locationModes.${mode}.description`)}
+                    </Text>
                   </View>
                   {selected && <IconCheck size={14} color="#0aa99d" />}
                 </View>
@@ -135,7 +137,7 @@ export default function GpsSettings({
           })}
         </View>
         <Text className="mt-2 text-[9px] leading-[13px] text-[#8796ad]">
-          Ứng dụng không thể cải thiện độ chính xác GPS vượt quá khả năng phần cứng của thiết bị.
+          {t('settings.gpsNote')}
         </Text>
       </View>
     </View>

@@ -1,7 +1,13 @@
 import { IconClose, IconPlay } from '@/components/Icons';
-import { CATEGORY_COLORS, formatDistance, haversineDistance } from '@/data/pois';
+import {
+  CATEGORY_COLORS,
+  CATEGORY_LABEL_KEYS,
+  formatDistance,
+  haversineDistance,
+} from '@/data/pois';
 import { POI } from '@/services/poiService';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Image, Text, TouchableOpacity, View } from 'react-native';
 
 interface PreviewPOIProps {
@@ -23,9 +29,10 @@ export default function PreviewPOI({
   onStartPlayback,
   onOpenPOI,
 }: PreviewPOIProps) {
+  const { t } = useTranslation();
   const poiName =
     typeof selectedPOI.name === 'object'
-      ? selectedPOI.name[language as keyof typeof selectedPOI.name] || selectedPOI.name.vi
+      ? selectedPOI.name[language as keyof typeof selectedPOI.name] || ''
       : selectedPOI.name;
 
   const distanceStr = formatDistance(
@@ -57,7 +64,12 @@ export default function PreviewPOI({
                     (CATEGORY_COLORS as Record<string, string>)[selectedPOI.category] || '#0D9488',
                 }}
               >
-                <Text className="text-[10px] font-semibold text-white">{selectedPOI.category}</Text>
+                <Text className="text-[10px] font-semibold text-white">
+                  {t(
+                    CATEGORY_LABEL_KEYS[selectedPOI.category as keyof typeof CATEGORY_LABEL_KEYS] ??
+                      'categories.landmark'
+                  )}
+                </Text>
               </View>
             </View>
 
@@ -66,7 +78,9 @@ export default function PreviewPOI({
             </TouchableOpacity>
           </View>
 
-          <Text className="mt-1 text-xs font-medium text-orange-500">{distanceStr} từ bạn</Text>
+          <Text className="mt-1 text-xs font-medium text-orange-500">
+            {t('detail.distanceFromYou', { distance: distanceStr })}
+          </Text>
         </View>
       </View>
 
@@ -77,7 +91,7 @@ export default function PreviewPOI({
           className="flex-1 flex-row items-center justify-center gap-2 rounded-xl bg-teal-600 py-2.5 active:bg-teal-700"
         >
           <IconPlay size={14} color="#FFFFFF" />
-          <Text className="text-sm font-semibold text-white">Nghe thuyết minh</Text>
+          <Text className="text-sm font-semibold text-white">{t('detail.listenNarration')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -88,7 +102,7 @@ export default function PreviewPOI({
           }}
           className="flex-1 flex-row items-center justify-center gap-2 rounded-xl border-2 border-teal-600 py-2.5 active:bg-teal-50"
         >
-          <Text className="text-sm font-semibold text-teal-600">Xem chi tiết</Text>
+          <Text className="text-sm font-semibold text-teal-600">{t('detail.viewDetails')}</Text>
         </TouchableOpacity>
       </View>
     </View>

@@ -1,6 +1,7 @@
 import { IconCheck } from '@/components/Icons';
 import { Language } from '@/store/AppContext';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, Text, View } from 'react-native';
 
 const languages: { code: Language; label: string; name: string }[] = [
@@ -44,9 +45,10 @@ export default function LanguageSettings({
   language: Language;
   onLanguageChange: (language: Language) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <View className="rounded-2xl bg-white p-3 shadow-sm">
-      <Text className="mb-2 text-[10px] text-[#8796ad]">Ngôn ngữ giao diện và thuyết minh</Text>
+      <Text className="mb-2 text-[10px] text-[#8796ad]">{t('settings.languageDescription')}</Text>
       <View className="gap-[6px]">
         {[languages.slice(0, 2), languages.slice(2, 4), languages.slice(4, 6)].map((row, index) => (
           <View key={index} className="flex-row gap-[6px]">

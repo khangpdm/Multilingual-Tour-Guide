@@ -1,11 +1,11 @@
 export type Language = 'vi' | 'en' | 'fr' | 'ja' | 'ko' | 'zh';
-export type Category = 'Di tích' | 'Bảo tàng' | 'Tôn giáo' | 'Kiến trúc' | 'Công viên' | 'Ẩm thực';
+export type Category = 'landmark' | 'museum' | 'religious' | 'architecture' | 'park' | 'food';
 
 export interface POI {
   id: string;
   name: Record<Language, string>;
   category: Category;
-  address: string;
+  address: string | Partial<Record<Language, string | null>>;
   lat: number;
   lng: number;
   coverImage: string;
@@ -27,8 +27,8 @@ export const POIS: POI[] = [
       ko: '호치민 중앙 우체국',
       zh: '胡志明市中央邮局',
     },
-    category: 'Kiến trúc',
-    address: '2 Công xã Paris, Bến Nghé, Quận 1, TP.HCM',
+    category: 'architecture',
+    address: { vi: '2 Công xã Paris, Bến Nghé, Quận 1, TP.HCM' },
     lat: 10.7797,
     lng: 106.6994,
     coverImage:
@@ -70,8 +70,8 @@ export const POIS: POI[] = [
       ko: '사이공 노트르담 대성당',
       zh: '西贡圣母大教堂',
     },
-    category: 'Tôn giáo',
-    address: '1 Công xã Paris, Bến Nghé, Quận 1, TP.HCM',
+    category: 'religious',
+    address: { vi: '1 Công xã Paris, Bến Nghé, Quận 1, TP.HCM' },
     lat: 10.78,
     lng: 106.699,
     coverImage:
@@ -113,8 +113,8 @@ export const POIS: POI[] = [
       ko: '통일궁',
       zh: '统一宫',
     },
-    category: 'Di tích',
-    address: '135 Nam Kỳ Khởi Nghĩa, Bến Thành, Quận 1, TP.HCM',
+    category: 'landmark',
+    address: { vi: '135 Nam Kỳ Khởi Nghĩa, Bến Thành, Quận 1, TP.HCM' },
     lat: 10.7767,
     lng: 106.6953,
     coverImage:
@@ -156,8 +156,8 @@ export const POIS: POI[] = [
       ko: '벤탄 시장',
       zh: '滨城市场',
     },
-    category: 'Ẩm thực',
-    address: 'Lê Lợi, Bến Thành, Quận 1, TP.HCM',
+    category: 'food',
+    address: { vi: 'Lê Lợi, Bến Thành, Quận 1, TP.HCM' },
     lat: 10.7724,
     lng: 106.698,
     coverImage:
@@ -199,8 +199,8 @@ export const POIS: POI[] = [
       ko: '전쟁 잔재 박물관',
       zh: '战争遗迹博物馆',
     },
-    category: 'Bảo tàng',
-    address: '28 Võ Văn Tần, Phường 6, Quận 3, TP.HCM',
+    category: 'museum',
+    address: { vi: '28 Võ Văn Tần, Phường 6, Quận 3, TP.HCM' },
     lat: 10.7797,
     lng: 106.6923,
     coverImage:
@@ -242,8 +242,8 @@ export const POIS: POI[] = [
       ko: '호치민 시립 극장',
       zh: '胡志明市歌剧院',
     },
-    category: 'Kiến trúc',
-    address: '7 Công trường Lam Sơn, Bến Nghé, Quận 1, TP.HCM',
+    category: 'architecture',
+    address: { vi: '7 Công trường Lam Sơn, Bến Nghé, Quận 1, TP.HCM' },
     lat: 10.7764,
     lng: 106.7034,
     coverImage:
@@ -285,8 +285,8 @@ export const POIS: POI[] = [
       ko: '응우옌 후에 보행자 거리',
       zh: '阮惠步行街',
     },
-    category: 'Kiến trúc',
-    address: 'Nguyễn Huệ, Bến Nghé, Quận 1, TP.HCM',
+    category: 'architecture',
+    address: { vi: 'Nguyễn Huệ, Bến Nghé, Quận 1, TP.HCM' },
     lat: 10.7748,
     lng: 106.7013,
     coverImage:
@@ -328,8 +328,8 @@ export const POIS: POI[] = [
       ko: '사이공 동물원 및 식물원',
       zh: '西贡动植物园',
     },
-    category: 'Công viên',
-    address: '2 Nguyễn Bỉnh Khiêm, Bến Nghé, Quận 1, TP.HCM',
+    category: 'park',
+    address: { vi: '2 Nguyễn Bỉnh Khiêm, Bến Nghé, Quận 1, TP.HCM' },
     lat: 10.7882,
     lng: 106.7049,
     coverImage:
@@ -383,13 +383,31 @@ export function formatDistance(m: number): string {
   return `${(m / 1000).toFixed(1)} km`;
 }
 
+export const CATEGORY_LABEL_KEYS: Record<Category, string> = {
+  landmark: 'categories.landmark',
+  museum: 'categories.museum',
+  religious: 'categories.religious',
+  architecture: 'categories.architecture',
+  park: 'categories.park',
+  food: 'categories.food',
+};
+
+export const CATEGORY_COLORS_BY_CODE: Record<string, string> = {
+  landmark: '#7c3aed',
+  museum: '#b45309',
+  religious: '#dc2626',
+  architecture: '#1d4ed8',
+  park: '#15803d',
+  food: '#c2410c',
+};
+
 export const CATEGORY_COLORS: Record<Category, string> = {
-  'Di tích': '#7c3aed',
-  'Bảo tàng': '#b45309',
-  'Tôn giáo': '#dc2626',
-  'Kiến trúc': '#1d4ed8',
-  'Công viên': '#15803d',
-  'Ẩm thực': '#c2410c',
+  landmark: '#7c3aed',
+  museum: '#b45309',
+  religious: '#dc2626',
+  architecture: '#1d4ed8',
+  park: '#15803d',
+  food: '#c2410c',
 };
 
 export const LANG_TO_SPEECH: Record<Language, string> = {

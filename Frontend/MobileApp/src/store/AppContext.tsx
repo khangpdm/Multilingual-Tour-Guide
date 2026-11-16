@@ -1,10 +1,16 @@
-import { DEMO_USER_LOCATIONS, LANG_TO_SPEECH, Language, POIS } from '@/data/pois';
+import { DEMO_USER_LOCATIONS, Language, POIS } from '@/data/pois';
 import { fetchActiveLanguages, LanguageItem } from '@/services/languageService';
 import { fetchPOIs, POI } from '@/services/poiService';
 import { useRouter } from 'expo-router';
-import * as Speech from 'expo-speech';
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
+import {
+  requestSynthesizeAudio,
+  getAudioTaskStatus,
+  getAudioFileUrl,
+} from '@/services/audioService';
+import { AudioPlayer, createAudioPlayer } from 'expo-audio';
+import i18n, { changeAppLanguage } from '@/i18n';
 
 export type { Language };
 export type Tab = 'home' | 'explore' | 'scan' | 'download' | 'settings';
@@ -103,7 +109,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     { code: 'vi', name: 'Tiếng Việt', flag: '🇻🇳' },
     { code: 'en', name: 'English', flag: '🇺🇸' },
   ]);
-  const [language, setLanguage] = useState<Language>('vi');
+  const [language, setLanguageState] = useState<Language>('vi');
+  const setLanguage = (nextLanguage: Language) => {
+    setLanguageState(nextLanguage);
+    void changeAppLanguage(nextLanguage);
+  };
+  useEffect(() => {
+    const syncLanguage = (nextLanguage: string) => {
+      if (['vi', 'en', 'fr', 'ja', 'ko', 'zh'].includes(nextLanguage)) {
+        setLanguageState(nextLanguage as Language);
+      }
+    };
+    i18n.on('languageChanged', syncLanguage);
+    syncLanguage(i18n.language);
+    return () => {
+      i18n.off('languageChanged', syncLanguage);
+    };
+  }, []);
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [autoPlay, setAutoPlay] = useState(true);
   const [wifiOnly, setWifiOnly] = useState(true);
@@ -115,9 +137,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Search & Filter
   const [homeSearch, setHomeSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('Tất cả');
+  const [selectedCategory, setSelectedCategory] = useState('all');
   const [exploreSearch, setExploreSearch] = useState('');
-  const [exploreCategory, setExploreCategory] = useState('Tất cả');
+  const [exploreCategory, setExploreCategory] = useState('all');
   const [exploreSort, setExploreSort] = useState<'distance' | 'name'>('distance');
 
   // Downloads
@@ -172,209 +194,206 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const [selectedVoice, setSelectedVoice] = useState('');
+  const [playingPOIId, setPlayingPOIId] = useState<string | null>(null);
+  const [playerProgress, setPlayerProgress] = useState(0);
+  const [speechRate, setSpeechRateState] = useState(1);
+  const [isPlaying, setIsPlaying] = useState(false);
+  // --- EXPO-AUDIO PLAYER & FALLBACK LOGIC ---
+  const audioPlayerRef = useRef<AudioPlayer | null>(null);
 
-  // Nội dung đang đọc.
-  const speechTextRef = useRef('');
-  const speechLanguageRef = useRef('vi-VN');
-
-  // Vị trí từ đang đọc, dùng khi tiếp tục.
-  const speechOffsetRef = useRef(0);
-  const speechActiveRef = useRef(false);
-
-  // Ngăn callback của bài cũ cập nhật trạng thái bài mới.
-  const speechSessionRef = useRef(0);
-
-  // Dừng âm thanh khi AppProvider bị unmount.
   useEffect(() => {
     return () => {
-      speechSessionRef.current += 1;
-      speechActiveRef.current = false;
-
-      void Speech.stop().catch(() => {});
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.remove();
+        audioPlayerRef.current = null;
+      }
     };
   }, []);
 
-  // Hàm nội bộ: phát từ vị trí đang lưu.
-  const speakFromOffset = async () => {
-    const session = ++speechSessionRef.current;
+  const statusSubscriptionRef = useRef<any>(null);
 
-    const fullText = speechTextRef.current;
-    const offset = speechOffsetRef.current;
-    const remainingText = fullText.slice(offset);
+  const playAudioUrl = async (url: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      try {
+        if (statusSubscriptionRef.current) {
+          statusSubscriptionRef.current.remove();
+          statusSubscriptionRef.current = null;
+        }
+        if (audioPlayerRef.current) {
+          try {
+            audioPlayerRef.current.pause();
+            audioPlayerRef.current.remove();
+          } catch (e) {}
+          audioPlayerRef.current = null;
+        }
 
-    if (!remainingText.trim()) return;
+        const player = createAudioPlayer({ uri: url });
+        player.setPlaybackRate(speechRate, 'high');
+        audioPlayerRef.current = player;
 
-    speechActiveRef.current = true;
-    setIsPlaying(true);
+        let resolved = false;
 
-    try {
-      // Xóa bài đọc và hàng đợi trước đó.
-      await Speech.stop();
+        statusSubscriptionRef.current = player.addListener(
+          'playbackStatusUpdate',
+          (status: any) => {
+            if (status.error) {
+              if (!resolved) {
+                resolved = true;
+                resolve(false);
+              }
+            }
+            if (status.isLoaded) {
+              if (!resolved) {
+                resolved = true;
+                try {
+                  player.seekTo(0);
+                } catch (e) {}
 
-      if (session !== speechSessionRef.current) return;
+                player.play();
+                setIsPlaying(true);
+                resolve(true);
+              }
 
-      let voiceIdentifier: string | undefined;
+              setIsPlaying(status.playing);
 
-      if (selectedVoice) {
-        const voices = await Speech.getAvailableVoicesAsync();
+              if (status.duration > 0) {
+                setPlayerProgress((status.currentTime / status.duration) * 100);
+              }
 
-        if (session !== speechSessionRef.current) return;
-
-        const foundVoice = voices.find(
-          (item) => item.identifier === selectedVoice || item.name === selectedVoice
+              if (status.didJustFinish) {
+                setIsPlaying(false);
+                setPlayerProgress(100);
+              }
+            }
+          }
         );
 
-        voiceIdentifier = foundVoice?.identifier;
-      }
-
-      Speech.speak(remainingText, {
-        language: speechLanguageRef.current,
-        rate: speechRate,
-        pitch: 1,
-        ...(voiceIdentifier ? { voice: voiceIdentifier } : {}),
-
-        // Cập nhật tiến trình theo vị trí trong văn bản.
-        onBoundary: (event: { charIndex: number }) => {
-          if (session !== speechSessionRef.current) return;
-          if (!Number.isFinite(event.charIndex)) return;
-
-          const position = Math.min(fullText.length, offset + Math.max(0, event.charIndex));
-
-          speechOffsetRef.current = position;
-
-          setPlayerProgress(Math.min((position / fullText.length) * 100, 99));
-        },
-
-        onDone: () => {
-          if (session !== speechSessionRef.current) return;
-
-          speechOffsetRef.current = fullText.length;
-          speechActiveRef.current = false;
-
-          setPlayerProgress(100);
-          setIsPlaying(false);
-        },
-
-        onStopped: () => {
-          if (session !== speechSessionRef.current) return;
-
-          speechActiveRef.current = false;
-          setIsPlaying(false);
-        },
-
-        onError: (error) => {
-          if (session !== speechSessionRef.current) return;
-
-          speechActiveRef.current = false;
-          setIsPlaying(false);
-
-          console.warn('TTS error:', error);
-
-          Alert.alert(
-            'Không phát được thuyết minh',
-            'Hãy kiểm tra ngôn ngữ và giọng đọc TTS trên thiết bị.'
-          );
-        },
-      });
-    } catch (error) {
-      if (session !== speechSessionRef.current) return;
-
-      speechActiveRef.current = false;
-      setIsPlaying(false);
-
-      console.warn('TTS error:', error);
-
-      Alert.alert('Thuyết minh', 'Không thể khởi động giọng đọc. Bạn hãy thử lại.');
-    }
-  };
-
-  // Phát thuyết minh của một địa điểm.
-  const startPlayback = async (poiId: string) => {
-    const poi = POIS.find((item) => item.id === poiId);
-    if (!poi) return;
-
-    const script = poi.ttsScript[language]?.trim();
-
-    if (!script) {
-      Alert.alert('Thuyết minh', 'Chưa có thuyết minh bằng ngôn ngữ đang chọn.');
-      return;
-    }
-
-    if (script.length > Speech.maxSpeechInputLength) {
-      Alert.alert(
-        'Nội dung quá dài',
-        'Bài thuyết minh cần được chia thành các đoạn nhỏ trước khi phát.'
-      );
-      return;
-    }
-
-    speechTextRef.current = script;
-    speechLanguageRef.current = LANG_TO_SPEECH[language];
-    speechOffsetRef.current = 0;
-
-    setPlayingPOIId(poiId);
-    setPlayerProgress(0);
-    setShowMiniPlayer(true);
-
-    await speakFromOffset();
-  };
-
-  // Tạm dừng hoặc tiếp tục.
-  const togglePlayback = async () => {
-    if (!speechTextRef.current) return;
-
-    if (speechActiveRef.current) {
-      // Hủy hiệu lực callback cũ trước khi dừng.
-      const session = ++speechSessionRef.current;
-
-      speechActiveRef.current = false;
-      setIsPlaying(false);
-
-      try {
-        await Speech.stop();
+        setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            resolve(false);
+          }
+        }, 4000);
       } catch (error) {
-        if (session !== speechSessionRef.current) return;
-
-        console.warn('TTS stop error:', error);
-        Alert.alert('Thuyết minh', 'Không thể dừng giọng đọc.');
+        resolve(false);
       }
+    });
+  };
 
+  const waitForTaskCompletion = async (taskId: string, maxAttempts = 15): Promise<boolean> => {
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const taskData = await getAudioTaskStatus(taskId);
+        const state = taskData?.state || taskData?.status;
+        if (state === 'COMPLETED' || state === 'completed') {
+          return true;
+        }
+        if (state === 'FAILED' || state === 'failed') {
+          return false;
+        }
+      } catch (e) {}
+      await new Promise((resolve) => setTimeout(resolve, 2000)); // Đợi 2s mỗi lần kiểm tra
+    }
+    return false;
+  };
+
+  const startPlayback = async (poiId: string) => {
+    const targetLang = language;
+    setPlayingPOIId(poiId);
+    setShowMiniPlayer(true);
+    setPlayerProgress(0);
+
+    const primaryAudioUrl = getAudioFileUrl(poiId, targetLang);
+    console.log(`[Audio] Thử phát URL trực tiếp: ${primaryAudioUrl}`);
+
+    // BƯỚC 1: Thử phát audio có sẵn
+    const successCurrent = await playAudioUrl(primaryAudioUrl);
+    if (successCurrent) return;
+
+    // BƯỚC 2: Gọi POST /audio/synthesize
+    console.log(`[Audio Fallback] Chưa có sẵn file [${targetLang}]. Đang gọi API synthesize...`);
+    try {
+      const response = await requestSynthesizeAudio(poiId, targetLang);
+
+      if (response.status === 'ready') {
+        const successReady = await playAudioUrl(primaryAudioUrl);
+        if (successReady) return;
+      }
+      // Nếu backend đưa vào hàng đợi ("queued") và trả về task_id
+      else if (response.status === 'queued' && response.task_id) {
+        console.log(`[Audio Fallback] Đã xếp hàng task: ${response.task_id}. Đang chờ render...`);
+        const isCompleted = await waitForTaskCompletion(response.task_id);
+
+        if (isCompleted) {
+          const retrySuccess = await playAudioUrl(primaryAudioUrl);
+          if (retrySuccess) return;
+        }
+      }
+    } catch (e) {
+      console.warn('[Audio Fallback] Lỗi khi gọi synthesize hoặc chờ task:', e);
+    }
+
+    // BƯỚC 3: Fallback cuối cùng sang Tiếng Anh ('en') nếu tất cả thất bại
+    if (targetLang !== 'en') {
+      console.log(
+        '[Audio Fallback] Quá trình tạo audio thất bại. Đang chuyển sang phát file tiếng Anh (en) mặc định...'
+      );
+      const fallbackEnUrl = getAudioFileUrl(poiId, 'en');
+      const successEn = await playAudioUrl(fallbackEnUrl);
+      if (successEn) return;
+    }
+
+    Alert.alert(i18n.t('detail.audioNarration'), i18n.t('detail.noAudio'));
+    setIsPlaying(false);
+  };
+
+  const togglePlayback = async () => {
+    const player = audioPlayerRef.current;
+
+    if (!player) {
+      console.warn('[Audio] Player không tồn tại.');
       return;
     }
 
-    // Đã đọc hết thì phát lại từ đầu.
-    if (speechOffsetRef.current >= speechTextRef.current.length) {
-      speechOffsetRef.current = 0;
-      setPlayerProgress(0);
-    }
+    try {
+      if (isPlaying) {
+        player.pause();
+        setIsPlaying(false);
+      } else {
+        // Nếu audio đã phát hết thì tua về đầu.
+        if (playerProgress >= 100) {
+          await player.seekTo(0);
+          setPlayerProgress(0);
+        }
 
-    await speakFromOffset();
+        player.play();
+        setIsPlaying(true);
+      }
+    } catch (error) {
+      console.warn('[Audio] Toggle playback error:', error);
+    }
   };
 
-  // Dừng hẳn và xóa trạng thái trình phát.
   const stopPlayback = async () => {
-    speechSessionRef.current += 1;
-    speechActiveRef.current = false;
-    speechTextRef.current = '';
-    speechOffsetRef.current = 0;
-
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+      audioPlayerRef.current.remove();
+      audioPlayerRef.current = null;
+    }
     setPlayingPOIId(null);
     setIsPlaying(false);
     setPlayerProgress(0);
     setShowMiniPlayer(false);
-
-    try {
-      await Speech.stop();
-    } catch (error) {
-      console.warn('TTS stop error:', error);
-      Alert.alert('Thuyết minh', 'Không thể dừng giọng đọc.');
-    }
   };
 
-  const [playingPOIId, setPlayingPOIId] = useState<string | null>(null);
-  const [playerProgress, setPlayerProgress] = useState(0);
-  const [speechRate, setSpeechRate] = useState(1.0);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const setSpeechRate = (rate: number) => {
+    setSpeechRateState(rate);
+    const player = audioPlayerRef.current;
+    if (player) {
+      player.setPlaybackRate(rate, 'high');
+    }
+  };
+  // ------------------------------------------
 
   useEffect(() => {
     async function loadLanguages() {

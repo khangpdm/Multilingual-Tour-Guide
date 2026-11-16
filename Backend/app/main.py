@@ -8,7 +8,8 @@ from fastapi.staticfiles import StaticFiles
 from app.api.errors import install_exception_handlers
 from app.api.routes.languages import router as mobile_languages_router
 from app.api.routes.pois import router as mobile_pois_router
-from app.api.routes.telemetry import router as telemetry_router
+from app.api.routes.telemetry import router as mobile_telemetry_router
+from app.api.routes.audio import router as mobile_audio_router
 from app.core.config import AUDIO_DIR, IMAGE_DIR, ORIGINS
 from app.core.lifecycle import lifespan as admin_lifespan
 from app.db.sql import lifespan as mobile_lifespan
@@ -37,13 +38,15 @@ app.add_middleware(
     allow_origins=ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["Content-Type", "If-None-Match", "Authorization"],
+    allow_headers=[
+        "Content-Type",
+        "If-None-Match",
+        "Authorization",
+        "X-Device-Id",
+    ],
 )
 install_exception_handlers(app)
 
-
-app.mount("/images", StaticFiles(directory="static/images"), name="images")
-app.mount("/static/audio", StaticFiles(directory="static/audio"), name="audio")
 @app.middleware("http")
 async def protect_admin_writes(request: Request, call_next):
     if request.url.path.startswith(("/auth/", "/admin/")) and request.method in {"POST", "PUT", "DELETE", "PATCH"}:
@@ -67,12 +70,14 @@ async def protect_auth_cache(request: Request, call_next):
 
 IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+
 app.mount("/images", StaticFiles(directory=IMAGE_DIR), name="images")
-app.mount("/audio", StaticFiles(directory=AUDIO_DIR), name="audio")
+app.mount("/static/audio", StaticFiles(directory=AUDIO_DIR), name="static_audio")
 
 app.include_router(mobile_languages_router)
 app.include_router(mobile_pois_router)
-app.include_router(telemetry_router)
+app.include_router(mobile_telemetry_router)
+app.include_router(mobile_audio_router)
 app.include_router(system_router)
 app.include_router(auth_router)
 app.include_router(zones_router)
@@ -81,7 +86,6 @@ app.include_router(pois_router)
 app.include_router(audio_router)
 app.include_router(audit_router)
 app.include_router(media_router)
-app.include_router(audio_router)
 app.include_router(offline_router)
 app.include_router(management_router)
 

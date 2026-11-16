@@ -1,4 +1,5 @@
-export type CategoryId = 'all' | 'Công viên' | 'Bảo tàng' | 'Tôn giáo';
+export type CategoryId =
+  'all' | 'landmark' | 'museum' | 'religious' | 'architecture' | 'park' | 'food';
 
 export interface CategoryOption {
   id: CategoryId;

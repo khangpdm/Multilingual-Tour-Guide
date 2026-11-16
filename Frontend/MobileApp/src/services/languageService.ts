@@ -8,7 +8,7 @@ export interface LanguageItem {
 
 export async function fetchActiveLanguages(): Promise<LanguageItem[]> {
   try {
-    const data = await httpGet('/languages');
+    const data = await httpGet<{ languages?: LanguageItem[] }>('/languages');
     return data.languages || [];
   } catch (error) {
     console.warn(

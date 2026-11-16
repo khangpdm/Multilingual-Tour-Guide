@@ -5,10 +5,12 @@ import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'ex
 import { useApp } from '@/store/AppContext';
 import { QR_POI_MAP, POIS } from '@/data/pois';
 import { IconFlash, IconClose } from '@/components/Icons';
+import { useTranslation } from 'react-i18next';
 
 type ScanState = 'idle' | 'scanning' | 'success' | 'invalid' | 'missing';
 
 export default function QRScanScreen() {
+  const { t } = useTranslation();
   const { openPOI, language } = useApp();
   const [permission, requestPermission] = useCameraPermissions();
   const [flash, setFlash] = useState(false);
@@ -70,7 +72,7 @@ export default function QRScanScreen() {
   if (!permission) {
     return (
       <View className="flex-1 items-center justify-center bg-gray-950 px-6">
-        <Text className="text-center text-sm text-white">Đang kiểm tra quyền camera...</Text>
+        <Text className="text-center text-sm text-white">{t('qr.checkingPermission')}</Text>
       </View>
     );
   }
@@ -79,18 +81,18 @@ export default function QRScanScreen() {
     return (
       <View className="flex-1 items-center justify-center bg-gray-950 px-7">
         <Text className="mb-3 text-center text-xl font-bold text-white">
-          Cần quyền truy cập camera
+          {t('qr.permissionTitle')}
         </Text>
 
         <Text className="mb-6 text-center text-sm leading-6 text-gray-300">
-          Cho phép ứng dụng sử dụng camera để quét mã QR địa điểm du lịch.
+          {t('qr.permissionDescription')}
         </Text>
 
         <Pressable
           onPress={requestPermission}
           className="rounded-xl bg-teal-600 px-6 py-3 active:bg-teal-700"
         >
-          <Text className="font-bold text-white">Cấp quyền camera</Text>
+          <Text className="font-bold text-white">{t('qr.grantPermission')}</Text>
         </Pressable>
       </View>
     );
@@ -99,11 +101,11 @@ export default function QRScanScreen() {
   const isError = state === 'invalid' || state === 'missing';
 
   const statusMessage: Record<ScanState, string> = {
-    idle: 'Đưa mã QR của địa điểm vào trong khung',
-    scanning: 'Đang xử lý mã QR...',
-    success: 'Tìm thấy địa điểm! Đang mở...',
-    invalid: 'Mã QR không hợp lệ hoặc chưa được hỗ trợ',
-    missing: 'Không tìm thấy địa điểm tương ứng',
+    idle: t('qr.status.idle'),
+    scanning: t('qr.status.scanning'),
+    success: t('qr.status.success'),
+    invalid: t('qr.status.invalid'),
+    missing: t('qr.status.missing'),
   };
 
   const frameColor =
@@ -146,12 +148,14 @@ export default function QRScanScreen() {
         <View pointerEvents="none" className="absolute inset-0 bg-black/20" />
 
         <View className="absolute left-4 top-4 rounded-full bg-black/60 px-3 py-2">
-          <Text className="text-[10px] font-bold tracking-wide text-white">QUÉT QR ĐỊA ĐIỂM</Text>
+          <Text className="text-[10px] font-bold tracking-wide text-white">
+            {t('qr.title').toLocaleUpperCase()}
+          </Text>
         </View>
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={flash ? 'Tắt đèn flash' : 'Bật đèn flash'}
+          accessibilityLabel={flash ? t('qr.turnFlashOff') : t('qr.turnFlashOn')}
           onPress={() => setFlash((value) => !value)}
           className={`absolute right-4 top-4 h-11 w-11 items-center justify-center rounded-full ${
             flash ? 'bg-yellow-400' : 'bg-white/20'
@@ -211,7 +215,7 @@ export default function QRScanScreen() {
               className="mt-4 flex-row items-center gap-2 rounded-full bg-white/15 px-5 py-3"
             >
               <IconClose size={16} />
-              <Text className="font-semibold text-white">Quét lại</Text>
+              <Text className="font-semibold text-white">{t('qr.retry')}</Text>
             </Pressable>
           )}
         </View>
@@ -220,7 +224,7 @@ export default function QRScanScreen() {
       {/* Hướng dẫn */}
       <View className="bg-gray-900 px-5 pb-7 pt-5">
         <Text className="mb-3 text-xs font-bold tracking-widest text-gray-400">
-          HƯỚNG DẪN QUÉT MÃ
+          {t('qr.instructions').toLocaleUpperCase()}
         </Text>
 
         <View className="mb-4 flex-row items-start gap-3">
@@ -228,10 +232,8 @@ export default function QRScanScreen() {
             <Text className="text-sm font-bold text-teal-300">1</Text>
           </View>
           <View className="flex-1">
-            <Text className="mb-1 text-sm font-semibold text-white">Đưa camera về phía mã QR</Text>
-            <Text className="text-xs leading-5 text-gray-400">
-              Giữ mã QR trọn trong khung và đảm bảo đủ ánh sáng.
-            </Text>
+            <Text className="mb-1 text-sm font-semibold text-white">{t('qr.step1Title')}</Text>
+            <Text className="text-xs leading-5 text-gray-400">{t('qr.step1Description')}</Text>
           </View>
         </View>
 
@@ -240,10 +242,8 @@ export default function QRScanScreen() {
             <Text className="text-sm font-bold text-teal-300">2</Text>
           </View>
           <View className="flex-1">
-            <Text className="mb-1 text-sm font-semibold text-white">Mở thuyết minh địa điểm</Text>
-            <Text className="text-xs leading-5 text-gray-400">
-              Ứng dụng tự nhận diện mã và mở địa điểm tương ứng.
-            </Text>
+            <Text className="mb-1 text-sm font-semibold text-white">{t('qr.step2Title')}</Text>
+            <Text className="text-xs leading-5 text-gray-400">{t('qr.step2Description')}</Text>
           </View>
         </View>
       </View>

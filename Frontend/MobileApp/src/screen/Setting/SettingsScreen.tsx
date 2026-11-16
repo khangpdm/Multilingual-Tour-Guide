@@ -5,9 +5,11 @@ import SettingSectionTitle from '@/screen/Setting/components/SettingSectionTitle
 import VoiceSettings from '@/screen/Setting/components/VoiceSettings';
 import { useApp } from '@/store/AppContext';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { ScrollView, Text } from 'react-native';
 
 export default function SettingsScreen() {
+  const { t } = useTranslation();
   const {
     language,
     setLanguage,
@@ -31,12 +33,14 @@ export default function SettingsScreen() {
       showsVerticalScrollIndicator={false}
       className="flex-1 bg-[#f7f9fb]"
     >
-      <Text className="mb-[18px] text-[20px] font-bold text-[#102d4f]">Cài đặt</Text>
+      <Text className="mb-[18px] text-[20px] font-bold text-[#102d4f]">{t('settings.title')}</Text>
 
-      <SettingSectionTitle>NGÔN NGỮ</SettingSectionTitle>
+      <SettingSectionTitle>{t('settings.language').toLocaleUpperCase()}</SettingSectionTitle>
       <LanguageSettings language={language} onLanguageChange={setLanguage} />
 
-      <SettingSectionTitle withTopSpacing>GPS VÀ TỰ ĐỘNG PHÁT</SettingSectionTitle>
+      <SettingSectionTitle withTopSpacing>
+        {t('settings.gpsAutoplay').toLocaleUpperCase()}
+      </SettingSectionTitle>
       <GpsSettings
         autoPlay={autoPlay}
         onAutoPlayChange={setAutoPlay}
@@ -46,7 +50,7 @@ export default function SettingsScreen() {
         onLocationModeChange={setLocationMode}
       />
 
-      <SettingSectionTitle>GIỌNG ĐỌC TTS</SettingSectionTitle>
+      <SettingSectionTitle>{t('settings.voice').toLocaleUpperCase()}</SettingSectionTitle>
       <VoiceSettings
         voice={voice}
         onVoiceChange={setVoice}
@@ -54,7 +58,7 @@ export default function SettingsScreen() {
         onSpeechRateChange={setSpeechRate}
       />
 
-      <SettingSectionTitle>NỘI DUNG OFFLINE</SettingSectionTitle>
+      <SettingSectionTitle>{t('settings.offline').toLocaleUpperCase()}</SettingSectionTitle>
       <OfflineSettings wifiOnly={wifiOnly} onWifiOnlyChange={setWifiOnly} />
     </ScrollView>
   );

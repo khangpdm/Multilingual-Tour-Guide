@@ -56,11 +56,11 @@ export default function HomeScreen() {
     return pois.filter((p) => {
       let name = '';
       if (typeof p.name === 'object' && p.name !== null) {
-        name = p.name[language] || p.name.vi || '';
+        name = p.name[language] || '';
       } else if (typeof p.name === 'string') {
         name = p.name;
       }
-      const address = p.address || '';
+      const address = typeof p.address === 'string' ? p.address : p.address[language] || '';
       return name.toLowerCase().includes(query) || address.toLowerCase().includes(query);
     });
   }, [homeSearch, language, pois]);
