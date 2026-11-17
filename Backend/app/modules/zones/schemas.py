@@ -1,6 +1,7 @@
 from pydantic import Field, model_validator
 
-from app.schemas.base import Input
+from app.schemas.base import Input, partial_model
+from app.modules.zones.geometry import intersects
 
 
 class MapRegion(Input):
@@ -20,3 +21,24 @@ class ZoneInput(Input):
     name: str = Field(min_length=1, max_length=100)
     map_region: MapRegion
     is_active: bool = True
+    boundary: list[tuple[float, float]] | None = Field(default=None, min_length=4, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_boundary(self):
+        if self.boundary is None:
+            return self
+        west, south, east, north = self.map_region.bbox
+        if self.boundary[0] != self.boundary[-1] or any(not (west <= longitude <= east and south <= latitude <= north) for longitude, latitude in self.boundary):
+            raise ValueError("Boundary must be a closed polygon inside the bbox.")
+        segments = list(zip(self.boundary, self.boundary[1:]))
+        if len(set(self.boundary[:-1])) != len(segments) or abs(sum(start[0] * end[1] - end[0] * start[1] for start, end in segments)) < 1e-12:
+            raise ValueError("Boundary must have distinct vertices and nonzero area.")
+        for index, (start, end) in enumerate(segments):
+            for other_index in range(index + 2, len(segments)):
+                if index == 0 and other_index == len(segments) - 1:
+                    continue
+                if intersects(start, end, *segments[other_index]):
+                    raise ValueError("Boundary must not intersect itself.")
+        return self
+
+ZonePatch = partial_model("ZonePatch", ZoneInput)

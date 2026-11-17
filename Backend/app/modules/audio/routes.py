@@ -13,7 +13,7 @@ from app.core.security import require
 from app.core.state import mutation_lock
 from app.core.utils import audit, fail, identifier, now, public, update_record
 from app.db.connection import database
-from app.modules.media.storage import AUDIO_LIMIT, checked_mp3, store_bytes
+from app.modules.audio.storage import AUDIO_LIMIT, checked_mp3, store_audio_bytes
 from app.modules.pois.routes import editable_poi
 from app.schemas.base import Input
 
@@ -64,7 +64,7 @@ def text_hash(content):
 
 def execute_task(task_id, user):
     try:
-        with mutation_lock:
+        with mutation_lock, database.transaction():
             task = task_record(task_id)
             if task["state"] != "QUEUED":
                 return
@@ -87,7 +87,7 @@ def execute_task(task_id, user):
         request = urllib.request.Request(configured(), data=json.dumps({"text": content["text"], "language": locale}).encode(), headers=headers, method="POST")
         with urllib.request.build_opener(NoRedirect).open(request, timeout=60) as response:
             data = checked_mp3(response.read(AUDIO_LIMIT + 1))
-        with mutation_lock:
+        with mutation_lock, database.transaction():
             if task_record(task_id)["state"] != "PROCESSING":
                 return
             latest = editable_poi(task["poi_id"])
@@ -98,7 +98,7 @@ def execute_task(task_id, user):
                 raise ValueError("Content or audio changed during generation. Generate again.")
             if current.get("audio_source") == "UPLOADED" and not options.get("replace_uploaded_audio"):
                 raise ValueError("Uploaded audio is protected.")
-            url, checksum = store_bytes(data, "mp3")
+            url, checksum = store_audio_bytes(data)
             update_record("pois", task["poi_id"], {"content." + locale: {**current, "audio_url": url, "audio_sha256": checksum, "audio_source": "TTS", "updated_at": now()}, "last_modified_by": user["user_id"]}, user, "audio.completed")
             query("UPDATE audio_tasks SET state='COMPLETED',progress=100,error=NULL,finished_at=UTC_TIMESTAMP(3) WHERE id=%s", (task_id,))
     except Exception as error:
@@ -120,7 +120,7 @@ def regenerate(poi_id: str, body: Regenerate, background: BackgroundTasks, user=
     if body.retranslate:
         fail(422, "TRANSLATION_UNAVAILABLE", "Save the translated script first; this provider generates speech only.")
     created, skipped = [], []
-    with mutation_lock:
+    with mutation_lock, database.transaction():
         poi = editable_poi(poi_id)
         for locale in dict.fromkeys(body.locales):
             content = poi.get("content", {}).get(locale, {})
@@ -145,7 +145,7 @@ def regenerate(poi_id: str, body: Regenerate, background: BackgroundTasks, user=
 
 @router.post("/admin/audio-tasks/{task_id}/cancel")
 def cancel(task_id: str, user=Depends(require("audio.cancel_task"))):
-    with mutation_lock:
+    with mutation_lock, database.transaction():
         task = task_record(task_id)
         if task["state"] not in {"QUEUED", "PROCESSING"}:
             fail(409, "INVALID_STATE", "Only active tasks may be cancelled.")
@@ -157,7 +157,7 @@ def cancel(task_id: str, user=Depends(require("audio.cancel_task"))):
 @router.post("/admin/audio-tasks/{task_id}/retry")
 def retry(task_id: str, background: BackgroundTasks, user=Depends(require("audio.retry_task"))):
     configured()
-    with mutation_lock:
+    with mutation_lock, database.transaction():
         task = task_record(task_id)
         if task["state"] not in {"FAILED", "CANCELLED"}:
             fail(409, "INVALID_STATE", "Only failed or cancelled tasks may be retried.")

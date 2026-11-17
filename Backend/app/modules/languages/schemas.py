@@ -1,6 +1,6 @@
 from pydantic import Field
 
-from app.schemas.base import Input
+from app.schemas.base import Input, partial_model
 
 
 class LanguageFields(Input):
@@ -13,3 +13,5 @@ class LanguageFields(Input):
 
 class LanguageCreate(LanguageFields):
     code: str = Field(pattern=r"^[a-z]{2,3}(-[A-Z]{2})?$")
+
+LanguagePatch = partial_model("LanguagePatch", LanguageFields)

@@ -1,15 +1,21 @@
 import io
+import os
+from urllib.parse import quote, urlsplit
 
 import qrcode
+from PIL import Image, ImageDraw, ImageFont
 from fastapi import APIRouter, Depends, File, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import Field
 
 from app.core.security import require
+from app.core.config import settings
 from app.core.state import mutation_lock
 from app.core.utils import fail, get_record, now, update_record
-from app.modules.media.storage import AUDIO_LIMIT, IMAGE_LIMIT, asset_path, checked_image, checked_mp3, store_bytes
+from app.modules.media.storage import IMAGE_LIMIT, asset_path, checked_image, store_bytes
 from app.modules.pois.routes import editable_poi, poi_public
+from app.modules.pois.versioning import expected_version
+from app.db.connection import database
 from app.schemas.base import Input
 
 router = APIRouter()
@@ -26,13 +32,13 @@ def asset(filename: str, user=Depends(require("poi.view"))):
 
 
 @router.post("/admin/pois/{poi_id}/images")
-async def upload_image(poi_id: str, file: UploadFile = File(...), user=Depends(require("poi.edit"))):
+async def upload_image(poi_id: str, file: UploadFile = File(...), version=Depends(expected_version), user=Depends(require("poi.edit"))):
     try:
         data = checked_image(await file.read(IMAGE_LIMIT + 1))
     finally:
         await file.close()
-    with mutation_lock:
-        poi = editable_poi(poi_id)
+    with mutation_lock, database.transaction():
+        poi = editable_poi(poi_id, version)
         if len(poi.get("images", [])) >= 10:
             fail(422, "IMAGE_LIMIT", "At most 10 images per POI.")
         url, _ = store_bytes(data, "jpg")
@@ -40,9 +46,9 @@ async def upload_image(poi_id: str, file: UploadFile = File(...), user=Depends(r
 
 
 @router.put("/admin/pois/{poi_id}/images")
-def order_images(poi_id: str, body: ImageOrder, user=Depends(require("poi.edit"))):
-    with mutation_lock:
-        poi = editable_poi(poi_id)
+def order_images(poi_id: str, body: ImageOrder, version=Depends(expected_version), user=Depends(require("poi.edit"))):
+    with mutation_lock, database.transaction():
+        poi = editable_poi(poi_id, version)
         if len(set(body.images)) != len(body.images) or sorted(body.images) != sorted(poi.get("images", [])):
             fail(422, "INVALID_ORDER", "Reorder existing images only.")
         if body.images and body.cover_image not in body.images or not body.images and body.cover_image:
@@ -51,9 +57,9 @@ def order_images(poi_id: str, body: ImageOrder, user=Depends(require("poi.edit")
 
 
 @router.delete("/admin/pois/{poi_id}/images/{filename}")
-def delete_image(poi_id: str, filename: str, user=Depends(require("poi.edit"))):
-    with mutation_lock:
-        poi = editable_poi(poi_id)
+def delete_image(poi_id: str, filename: str, version=Depends(expected_version), user=Depends(require("poi.edit"))):
+    with mutation_lock, database.transaction():
+        poi = editable_poi(poi_id, version)
         images = [image for image in poi.get("images", []) if image.rsplit("/", 1)[-1] != filename]
         if len(images) == len(poi.get("images", [])):
             fail(404, "NOT_FOUND", "Image does not belong to this POI.")
@@ -61,26 +67,42 @@ def delete_image(poi_id: str, filename: str, user=Depends(require("poi.edit"))):
         return poi_public(update_record("pois", poi_id, {"images": images, "cover_image": cover, "last_modified_by": user["user_id"]}, user, "poi.image_remove"))
 
 
-@router.post("/admin/pois/{poi_id}/content/{locale}/audio")
-async def upload_audio(poi_id: str, locale: str, file: UploadFile = File(...), user=Depends(require("poi.edit"))):
-    try:
-        data = checked_mp3(await file.read(AUDIO_LIMIT + 1))
-    finally:
-        await file.close()
-    with mutation_lock:
-        poi = editable_poi(poi_id)
-        if locale not in poi.get("content", {}) or not get_record("languages", locale).get("is_active"):
-            fail(422, "INVALID_LANGUAGE", "Save content for an active language first.")
-        url, checksum = store_bytes(data, "mp3")
-        content = {**poi["content"][locale], "audio_url": url, "audio_sha256": checksum, "audio_source": "UPLOADED", "updated_at": now()}
-        return poi_public(update_record("pois", poi_id, {"content." + locale: content, "last_modified_by": user["user_id"]}, user, "poi.audio_upload"))
 
 
 @router.get("/admin/pois/{poi_id}/qr/image")
 def qr_image(poi_id: str, user=Depends(require("poi.view"))):
     poi = get_record("pois", poi_id)
+    if poi.get("is_archived"):
+        fail(410, "QR_INACTIVE", "This POI is archived.")
     if not poi.get("qr_code"):
         fail(404, "QR_MISSING", "Assign a QR code first.")
     buffer = io.BytesIO()
-    qrcode.make(poi["qr_code"]).save(buffer, format="PNG")
+    base = (settings.get("PUBLIC_APP_URL") or "").rstrip("/")
+    try:
+        parsed = urlsplit(base)
+        if parsed.port == 0:
+            raise ValueError("Invalid public application port.")
+    except ValueError:
+        fail(503, "QR_BASE_URL_NOT_CONFIGURED", "Configure PUBLIC_APP_URL as the public HTTPS application URL.")
+    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment or any(character.isspace() for character in base) or "\\" in base:
+        fail(503, "QR_BASE_URL_NOT_CONFIGURED", "Configure PUBLIC_APP_URL as the public HTTPS application URL.")
+    image = qrcode.make(base + "/q/" + quote(poi["qr_code"], safe="")).convert("RGB")
+    name = poi.get("content", {}).get("en", poi.get("content", {}).get("vi", {})).get("name", poi_id)
+    font_path = settings.get("QR_FONT_PATH") or (os.path.join(os.environ.get("WINDIR", "C:/Windows"), "Fonts", "arial.ttf") if os.name == "nt" else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
+    font = ImageFont.truetype(font_path, 18) if os.path.isfile(font_path) else ImageFont.load_default(size=18)
+    lines, current = [], ""
+    draw = ImageDraw.Draw(image)
+    for character in name:
+        if current and draw.textlength(current + character, font=font) > image.width - 20:
+            lines.append(current)
+            current = ""
+        current += character
+    if current:
+        lines.append(current)
+    output = Image.new("RGB", (image.width, image.height + 28 * len(lines) + 16), "white")
+    output.paste(image, (0, 0))
+    draw = ImageDraw.Draw(output)
+    for index, line in enumerate(lines):
+        draw.text((image.width / 2, image.height + 8 + 28 * index), line, fill="black", font=font, anchor="mt")
+    output.save(buffer, format="PNG")
     return Response(buffer.getvalue(), media_type="image/png", headers={"Cache-Control": "no-store", "Content-Disposition": f'inline; filename="qr-{poi_id}.png"'})

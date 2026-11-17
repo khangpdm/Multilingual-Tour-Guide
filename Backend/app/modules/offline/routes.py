@@ -40,10 +40,18 @@ def release_record(release_id):
     if not release:
         fail(404, "NOT_FOUND", "Offline release not found.")
     release["languages"] = query("SELECT * FROM offline_pack_languages WHERE release_id=%s ORDER BY language_code", (release_id,))
+    release["outdated"] = False
+    if release["status"] in {"ready", "published"}:
+        try:
+            _, checksum = snapshot(release["zone_id"], [item["language_code"] for item in release["languages"]])
+            release["outdated"] = checksum != release["source_hash"]
+        except HTTPException:
+            release["outdated"] = True
     return release
 
 
 def snapshot(zone_id, locales):
+    locales = sorted(set(["en", *locales]))
     zone = get_record("zones", zone_id)
     if not zone.get("is_active"):
         fail(422, "INACTIVE_ZONE", "Select an active zone.")
@@ -55,14 +63,23 @@ def snapshot(zone_id, locales):
     for record in database.fetch_all("pois", {"zone_id": zone_id}):
         if record.get("status") not in {"active", "published"} or record.get("is_archived"):
             continue
-        checks = readiness(record, locales)
+        checks = readiness(record)
         if not checks["ready"]:
             name = record.get("content", {}).get("vi", {}).get("name", record["poi_id"])
             fail(422, "INCOMPLETE_CONTENT", name + ": " + "; ".join(issue["message"] for issue in checks["issues"]))
         poi = poi_public(record)
         poi.pop("readiness", None)
         poi.pop("content_status", None)
-        poi["content"] = {locale: poi["content"][locale] for locale in sorted(locales)}
+        poi.pop("tasks", None)
+        poi.pop("default_audio_missing", None)
+        default = poi["content"]["en"]
+        localized = {}
+        for locale in locales:
+            content = poi["content"].get(locale, {})
+            if not content.get("audio_url"):
+                content = {**default, **content, "audio_url": default["audio_url"], "audio_sha256": default["audio_sha256"], "audio_source": default.get("audio_source"), "audio_fallback_locale": "en"}
+            localized[locale] = content
+        poi["content"] = localized
         for image in poi["images"]:
             assets[image] = hashlib.sha256(asset_path(image).read_bytes()).hexdigest()
         for content in poi["content"].values():
@@ -129,24 +146,18 @@ def releases(page: int = Query(1, ge=1), page_size: int = Query(100, ge=1, le=10
 
 @router.post("/admin/offline-packs", status_code=201)
 def create_release(body: BuildPack, background: BackgroundTasks, user=Depends(require("offline.manage"))):
-    with mutation_lock:
-        locales = sorted(set(body.locales))
+    with mutation_lock, database.transaction():
+        locales = sorted(set(["en", *body.locales]))
         data, checksum = snapshot(body.zone_id, locales)
         release_id = identifier("release")
         with database.connection() as connection, connection.cursor() as cursor:
-            connection.begin()
-            try:
-                cursor.execute("SELECT id FROM zone WHERE id=%s FOR UPDATE", (body.zone_id,))
-                cursor.fetchone()
-                cursor.execute("SELECT COALESCE(MAX(version),0)+1 AS version FROM offline_pack_releases WHERE zone_id=%s", (body.zone_id,))
-                version = cursor.fetchone()["version"]
-                cursor.execute("INSERT INTO offline_pack_releases (id,zone_id,version,created_by,source_hash,poi_count) VALUES (%s,%s,%s,%s,%s,%s)", (release_id, body.zone_id, version, user["user_id"], checksum, len(data["pois"])))
-                for locale in locales:
-                    cursor.execute("INSERT INTO offline_pack_languages (id,release_id,language_code) VALUES (%s,%s,%s)", (identifier("language"), release_id, locale))
-                connection.commit()
-            except Exception:
-                connection.rollback()
-                raise
+            cursor.execute("SELECT id FROM zone WHERE id=%s FOR UPDATE", (body.zone_id,))
+            cursor.fetchone()
+            cursor.execute("SELECT COALESCE(MAX(version),0)+1 AS version FROM offline_pack_releases WHERE zone_id=%s", (body.zone_id,))
+            version = cursor.fetchone()["version"]
+            cursor.execute("INSERT INTO offline_pack_releases (id,zone_id,version,created_by,source_hash,poi_count) VALUES (%s,%s,%s,%s,%s,%s)", (release_id, body.zone_id, version, user["user_id"], checksum, len(data["pois"])))
+            for locale in locales:
+                cursor.execute("INSERT INTO offline_pack_languages (id,release_id,language_code) VALUES (%s,%s,%s)", (identifier("language"), release_id, locale))
         audit(user, "offline.build", release_id, None, {"zone_id": body.zone_id, "version": version, "locales": locales})
         background.add_task(build_release, release_id, data)
     return public(release_record(release_id))
@@ -174,7 +185,7 @@ def verify_bundle(release_id, part, checksum):
 
 @router.post("/admin/offline-packs/{release_id}/publish")
 def publish(release_id: str, user=Depends(require("offline.publish"))):
-    with mutation_lock:
+    with mutation_lock, database.transaction():
         release = release_record(release_id)
         if release["status"] != "ready":
             fail(409, "INVALID_STATE", "Only ready releases may be published.")
@@ -187,23 +198,17 @@ def publish(release_id: str, user=Depends(require("offline.publish"))):
                 fail(409, "NOT_READY", "A language pack is not ready.")
             verify_bundle(release_id, item["language_code"], item["sha256"])
         with database.connection() as connection, connection.cursor() as cursor:
-            connection.begin()
-            try:
-                cursor.execute("SELECT id FROM zone WHERE id=%s FOR UPDATE", (release["zone_id"],))
-                cursor.fetchone()
-                cursor.execute("UPDATE offline_pack_releases SET status='superseded' WHERE zone_id=%s AND status='published'", (release["zone_id"],))
-                cursor.execute("UPDATE offline_pack_releases SET status='published',published_by=%s,published_at=UTC_TIMESTAMP(3) WHERE id=%s", (user["user_id"], release_id))
-                connection.commit()
-            except Exception:
-                connection.rollback()
-                raise
+            cursor.execute("SELECT id FROM zone WHERE id=%s FOR UPDATE", (release["zone_id"],))
+            cursor.fetchone()
+            cursor.execute("UPDATE offline_pack_releases SET status='superseded' WHERE zone_id=%s AND status='published'", (release["zone_id"],))
+            cursor.execute("UPDATE offline_pack_releases SET status='published',published_by=%s,published_at=UTC_TIMESTAMP(3) WHERE id=%s", (user["user_id"], release_id))
         audit(user, "offline.publish", release_id, None, {"version": release["version"]})
     return public(release_record(release_id))
 
 
 @router.post("/admin/offline-packs/{release_id}/withdraw")
 def withdraw(release_id: str, user=Depends(require("offline.publish"))):
-    with mutation_lock:
+    with mutation_lock, database.transaction():
         release = release_record(release_id)
         if release["status"] != "published":
             fail(409, "INVALID_STATE", "Only published packs may be withdrawn.")

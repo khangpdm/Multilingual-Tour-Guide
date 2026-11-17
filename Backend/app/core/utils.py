@@ -52,8 +52,14 @@ def audit(user, action, target, before, after):
 
 
 def update_record(collection, record_id, changes, user, action):
-    before = get_record(collection, record_id)
-    changes["updated_at"] = now()
-    after = database.update_record(collection, record_id, changes)
-    audit(user, action, record_id, before, after)
-    return after
+    with database.transaction():
+        if collection == "pois":
+            database.lock_poi(record_id)
+        before = get_record(collection, record_id)
+        changes = {**changes, "updated_at": now()}
+        if collection == "pois":
+            database.save_snapshot(before, user["user_id"])
+            changes["content_version"] = before["content_version"] + 1
+        after = database.update_record(collection, record_id, changes)
+        audit(user, action, record_id, before, after)
+        return after

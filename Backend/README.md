@@ -1,5 +1,12 @@
 # Local Admin API
 
+## PRD v2 update (2026-11-17)
+
+The current POI/Zone/language contract and migration notes are in
+`PRD_V2_IMPLEMENTATION.md`. They supersede the older POI publication workflow
+described below. Read the backup and configuration notes before restarting
+against an existing database.
+
 The Admin dashboard uses MySQL in `tourism_db` and the relational tables in `app/db/admin_mysql.sql`. The schema is idempotent and creates only missing tables; it does not drop existing data. This is a local Admin API, not the complete production API specification.
 
 ## Configure

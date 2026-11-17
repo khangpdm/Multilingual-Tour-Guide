@@ -29,7 +29,7 @@ export function Statistics() {
   const viewAudio = can('audio.view_tasks')
   const activeLanguages = data.languages.filter(language => language.is_active)
   const pois = data.pois.filter(poi => poi.status !== 'archived')
-  const published = pois.filter(poi => poi.status === 'published')
+  const published = pois.filter(poi => poi.status === 'active')
   const content = pois.flatMap(poi => activeLanguages.map(language => poi.content[language.code]))
   const textCount = content.filter(item => item?.text?.trim()).length
   const audioCount = content.filter(item => item?.audio_url).length
