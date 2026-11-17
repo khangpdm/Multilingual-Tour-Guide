@@ -1,0 +1,141 @@
+{
+  "common": {
+    "home": "Accueil",
+    "explore": "Explorer",
+    "scanQR": "Scanner le QR",
+    "downloads": "Téléchargements",
+    "settings": "Paramètres",
+    "loading": "Chargement...",
+    "cancel": "Annuler",
+    "confirm": "Confirmer"
+  },
+  "home": {
+    "title": "Explorer la ville",
+    "subtitle": "Découvrez les lieux intéressants autour de vous",
+    "nearby": "Lieux à proximité",
+    "featured": "Lieux à la une",
+    "searchPlaceholder": "Rechercher une adresse ou un lieu...",
+    "nearbyCount": "À proximité · {{count}} lieux"
+  },
+  "explore": {
+    "title": "Explorer",
+    "searchPlaceholder": "Rechercher des lieux...",
+    "allCategories": "Tout",
+    "noResults": "Aucun lieu trouvé",
+    "nearest": "Les plus proches",
+    "alphabetical": "A–Z",
+    "emptyTitle": "Aucun lieu trouvé",
+    "emptyHint": "Modifiez les filtres ou les termes de recherche",
+    "clearFilters": "Effacer les filtres"
+  },
+  "categories": {
+    "all": "Tout",
+    "landmark": "Monument",
+    "museum": "Musée",
+    "religious": "Religieux",
+    "architecture": "Architecture",
+    "park": "Parc",
+    "food": "Gastronomie"
+  },
+  "settings": {
+    "title": "Paramètres",
+    "language": "Langue",
+    "selectLanguage": "Choisir la langue",
+    "autoPlay": "Lecture automatique du commentaire",
+    "gpsAutoplay": "GPS et lecture automatique",
+    "voice": "Voix de synthèse",
+    "offline": "Contenu hors ligne",
+    "languageDescription": "Langue de l’interface et du commentaire",
+    "autoPlayNearby": "Lecture automatique à proximité",
+    "autoPlayDescription": "Lire le commentaire en entrant dans la zone",
+    "activationRadius": "Rayon de déclenchement",
+    "radiusNote": "Rayon actif (et non précision GPS)",
+    "locationMode": "Mode de mise à jour de la position",
+    "locationModes": {
+      "battery": {
+        "title": "Économie de batterie",
+        "description": "Moins précis"
+      },
+      "balanced": {
+        "title": "Équilibré",
+        "description": "Par défaut"
+      },
+      "accuracy": {
+        "title": "Haute précision",
+        "description": "Consomme plus de batterie"
+      }
+    },
+    "gpsNote": "L’application ne peut pas améliorer la précision GPS au-delà des capacités de votre appareil.",
+    "wifiOnly": "Télécharger uniquement en Wi-Fi",
+    "saveMobileData": "Économiser les données mobiles",
+    "downloadedStorage": "Espace téléchargé",
+    "manageOffline": "Gérer les contenus hors ligne",
+    "voiceCompatibility": "Voix compatible avec",
+    "readingSpeed": "Vitesse de lecture",
+    "listenTest": "Tester la voix",
+    "vietnamese": "Vietnamien"
+  },
+  "qr": {
+    "checkingPermission": "Vérification de l’autorisation de la caméra...",
+    "permissionTitle": "Accès à la caméra requis",
+    "permissionDescription": "Autorisez l’application à utiliser la caméra pour scanner les QR codes des lieux touristiques.",
+    "grantPermission": "Autoriser la caméra",
+    "title": "Scanner le QR du lieu",
+    "turnFlashOff": "Éteindre le flash",
+    "turnFlashOn": "Allumer le flash",
+    "retry": "Scanner à nouveau",
+    "instructions": "Instructions de scan",
+    "step1Title": "Dirigez la caméra vers le QR code",
+    "step1Description": "Gardez le QR code entier dans le cadre et assurez-vous que la lumière est suffisante.",
+    "step2Title": "Ouvrir le commentaire du lieu",
+    "step2Description": "L’application reconnaît le code et ouvre le lieu correspondant.",
+    "status": {
+      "idle": "Placez le QR code d’un lieu dans le cadre",
+      "scanning": "Traitement du QR code...",
+      "success": "Lieu trouvé ! Ouverture...",
+      "invalid": "QR code invalide ou non pris en charge",
+      "missing": "Lieu correspondant introuvable"
+    }
+  },
+  "download": {
+    "title": "Contenu hors ligne",
+    "downloaded": "45 Mo téléchargés",
+    "packageCount": "1 forfait / 6 disponibles",
+    "wifiOnly": "Télécharger uniquement en Wi-Fi",
+    "region": "Hô Chi Minh-Ville · District 1",
+    "points": "{{count}} lieux",
+    "remaining": "{{size}} restants",
+    "status": {
+      "downloaded": "Téléchargé",
+      "downloading": "Annuler",
+      "available": "Télécharger"
+    },
+    "downloadInProgress": "Téléchargement",
+    "regionTitle": "District 1 - Centre historique"
+  },
+  "detail": {
+    "notFound": "Lieu introuvable : {{poiId}}",
+    "back": "Retour",
+    "place": "Lieu",
+    "downloaded": "Téléchargé",
+    "downloadOffline": "Télécharger hors ligne",
+    "map": "Carte",
+    "noMapLink": "Aucun lien cartographique pour ce lieu.",
+    "openMapError": "Impossible d’ouvrir le lien cartographique. Réessayez.",
+    "distanceFromYou": "À {{distance}} de vous",
+    "openMap": "Ouvrir la carte",
+    "audioNarration": "Commentaire audio",
+    "narrationProgress": "Progression du commentaire",
+    "speed": "Vitesse {{rate}} fois",
+    "pauseNarration": "Mettre en pause",
+    "playNarration": "Lire le commentaire",
+    "playerDescription": "Lecteur audio intelligent · Multilingue et synthèse automatique",
+    "introduction": "Présentation",
+    "collapse": "Réduire ↑",
+    "readMore": "Lire la suite ↓",
+    "noDescription": "Aucune description disponible dans cette langue.",
+    "listenNarration": "Écouter le commentaire",
+    "viewDetails": "Voir les détails",
+    "noAudio": "Aucun commentaire audio disponible pour ce lieu."
+  }
+}

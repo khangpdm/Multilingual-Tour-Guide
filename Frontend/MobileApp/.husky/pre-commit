@@ -1,1 +1,5 @@
-npx lint-staged
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+# Chuyển vào thư mục chứa app trước khi chạy lint-staged
+cd Frontend/MobileApp && npx lint-staged

@@ -1,0 +1,141 @@
+{
+  "common": {
+    "home": "홈",
+    "explore": "탐색",
+    "scanQR": "QR 스캔",
+    "downloads": "다운로드",
+    "settings": "설정",
+    "loading": "불러오는 중...",
+    "cancel": "취소",
+    "confirm": "확인"
+  },
+  "home": {
+    "title": "도시 둘러보기",
+    "subtitle": "주변의 흥미로운 장소를 찾아보세요",
+    "nearby": "주변 장소",
+    "featured": "추천 장소",
+    "searchPlaceholder": "주소 또는 장소 검색...",
+    "nearbyCount": "주변 · {{count}}곳"
+  },
+  "explore": {
+    "title": "탐색",
+    "searchPlaceholder": "장소 검색...",
+    "allCategories": "전체",
+    "noResults": "장소를 찾을 수 없습니다",
+    "nearest": "가까운 순",
+    "alphabetical": "A–Z",
+    "emptyTitle": "장소를 찾을 수 없습니다",
+    "emptyHint": "필터나 검색어를 변경해 보세요",
+    "clearFilters": "필터 지우기"
+  },
+  "categories": {
+    "all": "전체",
+    "landmark": "명소",
+    "museum": "박물관",
+    "religious": "종교 시설",
+    "architecture": "건축물",
+    "park": "공원",
+    "food": "음식"
+  },
+  "settings": {
+    "title": "설정",
+    "language": "언어",
+    "selectLanguage": "언어 선택",
+    "autoPlay": "해설 자동 재생",
+    "gpsAutoplay": "GPS 및 자동 재생",
+    "voice": "음성 안내 음성",
+    "offline": "오프라인 콘텐츠",
+    "languageDescription": "인터페이스 및 해설 언어",
+    "autoPlayNearby": "근처에서 자동 재생",
+    "autoPlayDescription": "활성 영역에 들어오면 해설 재생",
+    "activationRadius": "작동 반경",
+    "radiusNote": "작동 반경 (GPS 정확도가 아님)",
+    "locationMode": "위치 업데이트 모드",
+    "locationModes": {
+      "battery": {
+        "title": "배터리 절약",
+        "description": "정확도 낮음"
+      },
+      "balanced": {
+        "title": "균형",
+        "description": "기본값"
+      },
+      "accuracy": {
+        "title": "높은 정확도",
+        "description": "배터리 소모 증가"
+      }
+    },
+    "gpsNote": "기기의 하드웨어 성능을 넘어 GPS 정확도를 높일 수 없습니다.",
+    "wifiOnly": "Wi-Fi에서만 다운로드",
+    "saveMobileData": "모바일 데이터 절약",
+    "downloadedStorage": "다운로드 용량",
+    "manageOffline": "오프라인 패키지 관리",
+    "voiceCompatibility": "지원 음성 언어:",
+    "readingSpeed": "읽기 속도",
+    "listenTest": "음성 미리 듣기",
+    "vietnamese": "베트남어"
+  },
+  "qr": {
+    "checkingPermission": "카메라 권한 확인 중...",
+    "permissionTitle": "카메라 접근 권한 필요",
+    "permissionDescription": "관광지 QR 코드를 스캔할 수 있도록 카메라 사용을 허용하세요.",
+    "grantPermission": "카메라 권한 허용",
+    "title": "장소 QR 코드 스캔",
+    "turnFlashOff": "플래시 끄기",
+    "turnFlashOn": "플래시 켜기",
+    "retry": "다시 스캔",
+    "instructions": "스캔 안내",
+    "step1Title": "카메라를 QR 코드에 맞추세요",
+    "step1Description": "QR 코드 전체가 프레임 안에 들어오도록 하고 충분한 조명을 확보하세요.",
+    "step2Title": "장소 해설 열기",
+    "step2Description": "코드를 인식해 해당 장소를 엽니다.",
+    "status": {
+      "idle": "장소 QR 코드를 프레임 안에 맞추세요",
+      "scanning": "QR 코드 처리 중...",
+      "success": "장소를 찾았습니다. 여는 중...",
+      "invalid": "유효하지 않거나 지원하지 않는 QR 코드입니다",
+      "missing": "해당 장소를 찾을 수 없습니다"
+    }
+  },
+  "download": {
+    "title": "오프라인 콘텐츠",
+    "downloaded": "45 MB 다운로드됨",
+    "packageCount": "패키지 1개 / 6개 사용 가능",
+    "wifiOnly": "Wi-Fi 연결 시에만 다운로드",
+    "region": "호치민시 · 1군",
+    "points": "{{count}}곳",
+    "remaining": "{{size}} 남음",
+    "status": {
+      "downloaded": "다운로드됨",
+      "downloading": "취소",
+      "available": "다운로드"
+    },
+    "downloadInProgress": "다운로드 중",
+    "regionTitle": "1군 - 역사 중심지"
+  },
+  "detail": {
+    "notFound": "장소를 찾을 수 없습니다: {{poiId}}",
+    "back": "뒤로",
+    "place": "장소",
+    "downloaded": "다운로드됨",
+    "downloadOffline": "오프라인 저장",
+    "map": "지도",
+    "noMapLink": "이 장소에는 지도 링크가 없습니다.",
+    "openMapError": "지도 링크를 열 수 없습니다. 다시 시도해 주세요.",
+    "distanceFromYou": "현재 위치에서 {{distance}}",
+    "openMap": "지도 열기",
+    "audioNarration": "오디오 해설",
+    "narrationProgress": "해설 진행률",
+    "speed": "속도 {{rate}}배",
+    "pauseNarration": "해설 일시정지",
+    "playNarration": "해설 재생",
+    "playerDescription": "스마트 오디오 플레이어 · 다국어 및 자동 합성 지원",
+    "introduction": "소개",
+    "collapse": "접기 ↑",
+    "readMore": "더 보기 ↓",
+    "noDescription": "이 언어로 된 설명이 없습니다.",
+    "listenNarration": "해설 듣기",
+    "viewDetails": "상세 보기",
+    "noAudio": "이 장소의 오디오 해설이 없습니다."
+  }
+}

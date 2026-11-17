@@ -1,0 +1,141 @@
+{
+  "common": {
+    "home": "Home",
+    "explore": "Explore",
+    "scanQR": "Scan QR",
+    "downloads": "Downloads",
+    "settings": "Settings",
+    "loading": "Loading...",
+    "cancel": "Cancel",
+    "confirm": "Confirm"
+  },
+  "home": {
+    "title": "Explore the City",
+    "subtitle": "Discover interesting places around you",
+    "nearby": "Nearby Places",
+    "featured": "Featured Places",
+    "searchPlaceholder": "Search for an address or place...",
+    "nearbyCount": "Nearby · {{count}} places"
+  },
+  "explore": {
+    "title": "Explore",
+    "searchPlaceholder": "Search places...",
+    "allCategories": "All",
+    "noResults": "No places found",
+    "nearest": "Nearest",
+    "alphabetical": "A–Z",
+    "emptyTitle": "No places found",
+    "emptyHint": "Try changing the filters or search terms",
+    "clearFilters": "Clear filters"
+  },
+  "categories": {
+    "all": "All",
+    "landmark": "Landmark",
+    "museum": "Museum",
+    "religious": "Religious",
+    "architecture": "Architecture",
+    "park": "Park",
+    "food": "Food"
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "selectLanguage": "Select language",
+    "autoPlay": "Auto-play narration",
+    "gpsAutoplay": "GPS and auto-play",
+    "voice": "Text-to-speech voice",
+    "offline": "Offline content",
+    "languageDescription": "Interface and narration language",
+    "autoPlayNearby": "Auto-play when nearby",
+    "autoPlayDescription": "Play narration when entering the trigger zone",
+    "activationRadius": "Trigger radius",
+    "radiusNote": "Active radius (not GPS accuracy)",
+    "locationMode": "Location update mode",
+    "locationModes": {
+      "battery": {
+        "title": "Battery saving",
+        "description": "Less accurate"
+      },
+      "balanced": {
+        "title": "Balanced",
+        "description": "Default"
+      },
+      "accuracy": {
+        "title": "High accuracy",
+        "description": "Uses more battery"
+      }
+    },
+    "gpsNote": "The app cannot improve GPS accuracy beyond your device hardware.",
+    "wifiOnly": "Download over Wi-Fi only",
+    "saveMobileData": "Save mobile data",
+    "downloadedStorage": "Downloaded storage",
+    "manageOffline": "Manage offline packages",
+    "voiceCompatibility": "Compatible voice for",
+    "readingSpeed": "Reading speed",
+    "listenTest": "Preview voice",
+    "vietnamese": "Vietnamese"
+  },
+  "qr": {
+    "checkingPermission": "Checking camera permission...",
+    "permissionTitle": "Camera access required",
+    "permissionDescription": "Allow the app to use the camera to scan tourist place QR codes.",
+    "grantPermission": "Grant camera access",
+    "title": "Scan place QR code",
+    "turnFlashOff": "Turn flash off",
+    "turnFlashOn": "Turn flash on",
+    "retry": "Scan again",
+    "instructions": "Scanning instructions",
+    "step1Title": "Point the camera at the QR code",
+    "step1Description": "Keep the whole QR code in the frame and ensure there is enough light.",
+    "step2Title": "Open the place narration",
+    "step2Description": "The app recognizes the code and opens the matching place.",
+    "status": {
+      "idle": "Place a location QR code inside the frame",
+      "scanning": "Processing QR code...",
+      "success": "Place found! Opening...",
+      "invalid": "QR code is invalid or unsupported",
+      "missing": "Matching place not found"
+    }
+  },
+  "download": {
+    "title": "Offline content",
+    "downloaded": "45 MB downloaded",
+    "packageCount": "1 package / 6 available",
+    "wifiOnly": "Download only on Wi-Fi",
+    "region": "Ho Chi Minh City · District 1",
+    "points": "{{count}} places",
+    "remaining": "{{size}} remaining",
+    "status": {
+      "downloaded": "Downloaded",
+      "downloading": "Cancel",
+      "available": "Download"
+    },
+    "downloadInProgress": "Downloading",
+    "regionTitle": "District 1 - Historic Center"
+  },
+  "detail": {
+    "notFound": "Place not found: {{poiId}}",
+    "back": "Back",
+    "place": "Place",
+    "downloaded": "Downloaded",
+    "downloadOffline": "Download offline",
+    "map": "Map",
+    "noMapLink": "This place has no map link.",
+    "openMapError": "Could not open the map link. Please try again.",
+    "distanceFromYou": "{{distance}} from you",
+    "openMap": "Open map",
+    "audioNarration": "Audio narration",
+    "narrationProgress": "Narration progress",
+    "speed": "Speed {{rate}} times",
+    "pauseNarration": "Pause narration",
+    "playNarration": "Play narration",
+    "playerDescription": "Smart audio player · Multilingual and automatic synthesis",
+    "introduction": "Introduction",
+    "collapse": "Show less ↑",
+    "readMore": "Read more ↓",
+    "noDescription": "No description is available in this language.",
+    "listenNarration": "Listen to narration",
+    "viewDetails": "View details",
+    "noAudio": "No narration audio is available for this place."
+  }
+}
