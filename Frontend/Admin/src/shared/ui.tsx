@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { useAdmin } from '../admin/store'
 import { apiBase, apiFetch, responseError } from '../admin/api'
 
@@ -8,8 +8,14 @@ const statusNames: Record<string, string> = { published: 'Công khai', unpublish
 export function Status({ value }: { value: string }) { return <span className={`status-badge badge-${['failed', 'deactivated', 'unpublished', 'inactive', 'high'].includes(value) ? 'danger' : ['queued', 'processing', 'pending_activation', 'pending', 'medium'].includes(value) ? 'warn' : ['archived', 'cancelled', 'missing', 'unknown'].includes(value) ? 'neutral' : 'ready'}`}><i />{statusNames[value] || value}</span> }
 export function Notice({ children }: { children: ReactNode }) { return <p className="admin-notice" role="status">{children}</p> }
 export function Empty({ text = 'Không có dữ liệu phù hợp.' }: { text?: string }) { return <div className="empty-note">{text}</div> }
-export function CrudDialog({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
+function isDialogBackdrop(event: MouseEvent<HTMLDialogElement>) {
+  if (event.target !== event.currentTarget) return false
+  const bounds = event.currentTarget.getBoundingClientRect()
+  return event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom
+}
+export function CrudDialog({ title, children, onClose, size = 'default' }: { title: string; children: ReactNode; onClose: () => void; size?: 'default' | 'wide' }) {
   const dialog = useRef<HTMLDialogElement>(null)
+  const backdropPressed = useRef(false)
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null
     const notifications = document.getElementById('admin-notifications')
@@ -21,9 +27,9 @@ export function CrudDialog({ title, children, onClose }: { title: string; childr
       previous?.focus()
     }
   }, [])
-  return <dialog ref={dialog} className="crud-dialog native-dialog" onCancel={event => { event.preventDefault(); onClose() }} aria-label={title}><div className="crud-dialog-head"><h2>{title}</h2><button type="button" className="icon-button" aria-label="Đóng biểu mẫu" onClick={onClose}>×</button></div>{children}</dialog>
+  return <dialog ref={dialog} className={`crud-dialog native-dialog${size === 'wide' ? ' dialog-wide' : ''}`} onPointerDown={event => { backdropPressed.current = event.button === 0 && isDialogBackdrop(event) }} onPointerCancel={() => { backdropPressed.current = false }} onClick={event => { const dismiss = backdropPressed.current && isDialogBackdrop(event); backdropPressed.current = false; if (dismiss) onClose() }} onCancel={event => { event.preventDefault(); onClose() }} aria-label={title}><div className="crud-dialog-head"><h2>{title}</h2><button type="button" className="icon-button" aria-label="Đóng biểu mẫu" onClick={onClose}>×</button></div>{children}</dialog>
 }
-export function DemoNotice() { const { error, mode, busy, streamStatus, can, localDatabase, capabilities } = useAdmin(); return <>{localDatabase && <details className="system-status"><summary>Thông tin kết nối hệ thống</summary><Notice>Đang kết nối MySQL local. Nội dung, ảnh, MP3 và gói offline được lưu trên máy chủ. {capabilities.tts ? 'TTS đã được cấu hình.' : 'TTS chưa cấu hình; có thể tải MP3 thủ công.'} Bản dịch được biên tập theo ngôn ngữ.</Notice></details>}{mode === 'live' && can('audio.view_tasks') && <small className="admin-block" role="status">Audio: {streamStatus}</small>}{busy && <Notice>Đang đồng bộ dữ liệu…</Notice>}{error && <p className="admin-error" role="alert">{error}</p>}</> }
+export function DemoNotice() { const { error, busy } = useAdmin(); return <>{busy && <Notice>Đang đồng bộ dữ liệu…</Notice>}{error && <p className="admin-error" role="alert">{error}</p>}</> }
 export function usePagination<T>(items: T[]) {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)

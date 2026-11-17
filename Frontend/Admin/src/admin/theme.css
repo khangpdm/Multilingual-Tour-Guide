@@ -85,6 +85,38 @@
 .database-summary[open] summary { margin-bottom: 22px; }
 .database-summary .admin-kpis { margin-bottom: 0; }
 table tbody tr:hover, table tbody tr:focus-within { transform: none; box-shadow: none; background: #f6fbfe; }
+.admin-page { --list-hover-shadow: 0 16px 36px -10px rgba(25, 35, 55, .24), 0 4px 10px rgba(25, 35, 55, .08); --list-hover-lift: -3px; }
+.admin-page table:not(.history-table):not(.density-table) > tbody > tr,
+.admin-page :is(.record-row, .offline-release, .zone-grid > .panel, .activity-list > .activity-item, .admin-image-grid > figure) {
+  position: relative;
+  border-radius: 10px;
+  transition: transform .2s ease, box-shadow .2s ease, background-color .2s ease, border-color .2s ease;
+}
+.admin-page table:not(.history-table):not(.density-table) > tbody > tr > td:first-child { border-radius: 10px 0 0 10px; }
+.admin-page table:not(.history-table):not(.density-table) > tbody > tr > td:last-child { border-radius: 0 10px 10px 0; }
+.admin-page table:not(.history-table):not(.density-table) > tbody > tr:focus-within,
+.admin-page :is(.record-row, .offline-release, .zone-grid > .panel, .activity-list > .activity-item, .admin-image-grid > figure):focus-within {
+  z-index: 3;
+  transform: translateY(var(--list-hover-lift));
+  box-shadow: var(--list-hover-shadow);
+  background: var(--card);
+  border-color: var(--border);
+}
+@media (hover: hover) and (pointer: fine) {
+  .admin-page table:not(.history-table):not(.density-table) > tbody > tr:hover,
+  .admin-page :is(.record-row, .offline-release, .zone-grid > .panel, .activity-list > .activity-item, .admin-image-grid > figure):not(:disabled):hover {
+    z-index: 3;
+    transform: translateY(var(--list-hover-lift));
+    box-shadow: var(--list-hover-shadow);
+    background: var(--card);
+    border-color: var(--border);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-page { --list-hover-lift: 0px; }
+  .admin-page table:not(.history-table):not(.density-table) > tbody > tr,
+  .admin-page :is(.record-row, .offline-release, .zone-grid > .panel, .activity-list > .activity-item, .admin-image-grid > figure) { transition: none; }
+}
 .auth-page { position: relative; isolation: isolate; min-height: 100vh; min-height: 100svh; display: grid; place-items: center; padding: 40px 20px; background: #231b30; color: #fff; }
 .auth-page::before { content: ''; position: absolute; inset: 0; z-index: -2; background: url('/images/login-mountains.jpg') center 55% / cover no-repeat; filter: saturate(.35) brightness(.65); }
 .auth-page::after { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, #83294e99 0%, #79344d66 37%, #091e2b99 78%, #04131cd9 100%); }
@@ -108,6 +140,9 @@ table tbody tr:hover, table tbody tr:focus-within { transform: none; box-shadow:
 .auth-password button { position: absolute; top: 0; right: 8px; width: 42px; height: 100%; display: grid; place-items: center; background: transparent; border: 0; color: #f3e5ed; border-radius: 50%; }
 .auth-card .auth-submit { width: 100%; min-height: 52px; justify-content: center; border: 1px solid #ad668b; border-radius: 30px; background: #783652; color: #fff; margin-top: 9px; font-size: 13px; letter-spacing: .04em; box-shadow: 0 8px 22px #24111d29; }
 .auth-card .auth-submit:hover { background: #8b4263; }
+.auth-form .auth-forgot-link { justify-self: center; padding: 4px 8px; border: 0; border-radius: 4px; background: transparent; color: #e5dbe2; font-size: 12px; font-weight: 400; cursor: pointer; }
+.auth-form .auth-forgot-link:hover { color: #fff; text-decoration: underline; }
+.auth-form .auth-forgot-link:focus-visible { outline: 2px solid #f3b8d6; outline-offset: 3px; }
 .auth-hint { color: #e5dbe2; font-size: 11px; margin: -10px 0 0; }
 .auth-secondary { display: block; color: #fff; width: 100%; margin-top: 20px; }
 .auth-card > .admin-notice { margin-top: 20px; background: #381e2bcc; color: #fff; border-color: #f2accb; border-radius: 8px; }

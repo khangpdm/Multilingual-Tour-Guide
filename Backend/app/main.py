@@ -5,12 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.modules.audio.uploads import router as audio_upload_router
 from app.api.errors import install_exception_handlers
-from app.core.config import ORIGINS
+from app.core.config import MOBILE_ORIGINS, ORIGINS
 from app.core.lifecycle import lifespan as admin_lifespan
 from app.db.sql import lifespan as mobile_lifespan
-from app.api.routes.languages import router as mobile_languages_router
-from app.api.routes.pois import router as mobile_pois_router
-from app.api.routes.audio import router as mobile_audio_router
+from app.modules.mobile.routes import router as mobile_router
 from app.api.routes.telemetry import router as mobile_telemetry_router
 from app.modules.audit.routes import router as audit_router
 from app.modules.auth.routes import router as auth_router
@@ -30,7 +28,7 @@ async def lifespan(app):
             yield
 
 app = FastAPI(title="Tour Guide Admin and Mobile API", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=ORIGINS, allow_credentials=True, allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"], allow_headers=["Content-Type", "If-Match", "If-None-Match", "Authorization", "X-Device-Id"])
+app.add_middleware(CORSMiddleware, allow_origins=[*ORIGINS, *MOBILE_ORIGINS], allow_credentials=True, allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"], allow_headers=["Content-Type", "If-Match", "If-None-Match", "Authorization", "X-Device-Id"])
 install_exception_handlers(app)
 
 
@@ -65,7 +63,5 @@ app.include_router(audio_router)
 app.include_router(audio_upload_router)
 app.include_router(offline_router)
 app.include_router(management_router)
-app.include_router(mobile_languages_router)
-app.include_router(mobile_pois_router)
-app.include_router(mobile_audio_router)
+app.include_router(mobile_router)
 app.include_router(mobile_telemetry_router)

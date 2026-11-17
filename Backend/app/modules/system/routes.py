@@ -22,6 +22,12 @@ def database_summary(user=Depends(require("poi.view"))):
 class GeofenceSettings(Input):
     radius_m: int = Field(ge=10, le=200)
 
+@router.get('/admin/mobile/active-devices')
+def active_devices(user=Depends(require('poi.view'))):
+    with database.connection() as connection, connection.cursor() as cursor:
+        cursor.execute('SELECT COUNT(*) AS active_devices FROM mobile_presence WHERE last_seen_at >= UTC_TIMESTAMP(3) - INTERVAL 2 MINUTE')
+        return {'active_devices': cursor.fetchone()['active_devices'], 'window_seconds': 120}
+
 
 @router.get("/admin/settings/geofence")
 def geofence_settings(user=Depends(require("poi.view"))):

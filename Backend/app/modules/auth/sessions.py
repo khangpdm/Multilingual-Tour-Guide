@@ -3,13 +3,22 @@ import json
 import secrets
 from datetime import timedelta
 
-from app.core.config import COOKIE, COOKIE_SECURE, SESSION_TTL_SECONDS
+from app.core.config import COOKIE, COOKIE_SECURE, SESSION_TTL_SECONDS, settings
 from app.core.utils import now
 from app.db.connection import database
 
 
 def token_hash(token):
     return hashlib.sha256(token.encode()).hexdigest()
+
+def local_mfa_bypass_enabled(request):
+    return (
+        settings.get("APP_ENV", "production").lower() == "development"
+        and settings.get("ADMIN_LOCAL_MFA_BYPASS", "false").lower() == "true"
+        and request.client is not None
+        and request.client.host in {"127.0.0.1", "::1"}
+        and request.url.hostname in {"localhost", "127.0.0.1", "::1"}
+    )
 
 
 def credential_fingerprint(user):

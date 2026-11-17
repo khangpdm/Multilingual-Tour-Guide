@@ -8,9 +8,11 @@ import {
   requestSynthesizeAudio,
   getAudioTaskStatus,
   getAudioFileUrl,
+  resolvedAudioUrl,
 } from '@/services/audioService';
 import { AudioPlayer, createAudioPlayer } from 'expo-audio';
 import i18n, { changeAppLanguage } from '@/i18n';
+import { listOfflineInstalls, loadOfflinePOIs } from '@/services/offlineService';
 
 export type { Language };
 export type Tab = 'home' | 'explore' | 'scan' | 'download' | 'settings';
@@ -34,7 +36,9 @@ interface AppContextValue {
   selectedMapPOIId: string | null;
   setSelectedMapPOIId: (id: string | null) => void;
   pois: POI[];
-  setPoiList: (pois: POI[]) => void;
+  setPoiList: React.Dispatch<React.SetStateAction<POI[]>>;
+  poiLoadError: boolean;
+  reloadPOIs: () => void;
 
   // Language
   supportedLanguages: LanguageItem[];
@@ -81,6 +85,7 @@ interface AppContextValue {
 
   // Download Screen
   downloads: Record<string, DownloadStatus>;
+  offlineBytes: number;
 
   // Audio Player
   startPlayback: (poiId: string) => Promise<void>;
@@ -143,7 +148,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [exploreSort, setExploreSort] = useState<'distance' | 'name'>('distance');
 
   // Downloads
-  const [downloads] = useState<Record<string, DownloadStatus>>({});
+  const [downloads, setDownloads] = useState<Record<string, DownloadStatus>>({});
+  const [offlineBytes, setOfflineBytes] = useState(0);
 
   // User location / Geofencing
   const [hasFollowed, setHasFollowed] = useState(false);
@@ -303,6 +309,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setShowMiniPlayer(true);
     setPlayerProgress(0);
 
+    const selected = pois.find((item) => item.id === poiId);
+    const selectedAudio = selected?.audioUrls?.[targetLang] || selected?.audioUrls?.en;
+    if (selectedAudio?.startsWith('file://') && (await playAudioUrl(selectedAudio))) return;
+
     const primaryAudioUrl = getAudioFileUrl(poiId, targetLang);
     console.log(`[Audio] Thử phát URL trực tiếp: ${primaryAudioUrl}`);
 
@@ -316,7 +326,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const response = await requestSynthesizeAudio(poiId, targetLang);
 
       if (response.status === 'ready') {
-        const successReady = await playAudioUrl(primaryAudioUrl);
+        const successReady = await playAudioUrl(
+          resolvedAudioUrl(response.audio_url) || primaryAudioUrl
+        );
         if (successReady) return;
       }
       // Nếu backend đưa vào hàng đợi ("queued") và trả về task_id
@@ -343,6 +355,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (successEn) return;
     }
 
+    try {
+      const offline = (await loadOfflinePOIs()).find((item) => item.id === poiId);
+      const offlineAudio = offline?.audioUrls?.[targetLang] || offline?.audioUrls?.en;
+      if (offlineAudio && (await playAudioUrl(offlineAudio))) return;
+    } catch {}
     Alert.alert(i18n.t('detail.audioNarration'), i18n.t('detail.noAudio'));
     setIsPlaying(false);
   };
@@ -405,17 +422,59 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     loadLanguages();
   }, []);
 
-  const [pois, setPoiList] = useState<POI[]>(POIS);
+  const [pois, setPoiList] = useState<POI[]>([]);
+  const [poiLoadError, setPoiLoadError] = useState(false);
+  const [poiRefresh, setPoiRefresh] = useState(0);
+  const reloadPOIs = () => setPoiRefresh((value) => value + 1);
 
   useEffect(() => {
+    let closed = false;
+    let pending = false;
     async function loadPOIsFromServer() {
-      const serverPOIs = await fetchPOIs();
-      if (serverPOIs && serverPOIs.length > 0) {
-        setPoiList(serverPOIs);
+      if (pending) return;
+      pending = true;
+      try {
+        if (isDemoMode) {
+          await Promise.resolve();
+          if (!closed) {
+            setPoiList(POIS);
+            setPoiLoadError(false);
+          }
+          return;
+        }
+        const installs = await listOfflineInstalls();
+        if (!closed) {
+          setOfflineBytes(installs.reduce((total, item) => total + item.bytes, 0));
+          setDownloads(
+            Object.fromEntries(
+              installs.flatMap((item) => item.pois.map((poi) => [poi.id, 'done' as const]))
+            )
+          );
+        }
+        const serverPOIs = await fetchPOIs();
+        if (!closed) {
+          setPoiList(serverPOIs);
+          setPoiLoadError(false);
+        }
+      } catch {
+        if (!closed) setPoiLoadError(true);
+        try {
+          const saved = await loadOfflinePOIs();
+          if (!closed) setPoiList(saved);
+        } catch {}
+      } finally {
+        pending = false;
       }
     }
-    loadPOIsFromServer();
-  }, []);
+    void loadPOIsFromServer();
+    const timer = setInterval(() => {
+      void loadPOIsFromServer();
+    }, 30000);
+    return () => {
+      closed = true;
+      clearInterval(timer);
+    };
+  }, [isDemoMode, poiRefresh]);
 
   return (
     <AppContext.Provider
@@ -435,6 +494,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setSelectedMapPOIId,
         pois,
         setPoiList,
+        poiLoadError,
+        reloadPOIs,
 
         // Language & Settings
         supportedLanguages,
@@ -481,6 +542,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
         // Downloads
         downloads,
+        offlineBytes,
 
         // Audio Player
         startPlayback,

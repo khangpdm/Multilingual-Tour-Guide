@@ -1,5 +1,6 @@
-import { useId, useState } from 'react'
-import { FileAudio, FileText, Globe, Layers, MapPin, QrCode, Radio, Sparkles } from 'lucide-react'
+import { useEffect, useId, useState } from 'react'
+import { FileAudio, FileText, Globe, Layers, MapPin, QrCode, Radio, Smartphone } from 'lucide-react'
+import { api } from '../../admin/api'
 import { useAdmin } from '../../admin/store'
 import './statistics.css'
 
@@ -27,6 +28,26 @@ export function Statistics() {
   const chartId = useId().replace(/:/g, '')
   const viewPois = can('poi.view')
   const viewAudio = can('audio.view_tasks')
+  const [activeDevices, setActiveDevices] = useState<number | null>(null)
+  const [presenceError, setPresenceError] = useState(false)
+  useEffect(() => {
+    if (!viewPois) return
+    let disposed = false
+    let pending = false
+    const refresh = async () => {
+      if (pending) return
+      pending = true
+      try {
+        const result = await api<{ active_devices: number }>('/admin/mobile/active-devices')
+        if (!disposed) { setActiveDevices(result.active_devices); setPresenceError(false) }
+      } catch {
+        if (!disposed) { setActiveDevices(null); setPresenceError(true) }
+      } finally { pending = false }
+    }
+    void refresh()
+    const timer = window.setInterval(() => void refresh(), 15000)
+    return () => { disposed = true; window.clearInterval(timer) }
+  }, [viewPois])
   const activeLanguages = data.languages.filter(language => language.is_active)
   const pois = data.pois.filter(poi => poi.status !== 'archived')
   const published = pois.filter(poi => poi.status === 'active')
@@ -52,7 +73,7 @@ export function Statistics() {
     { label: 'Kịch bản thuyết minh', value: textCount, note: 'Trên ngôn ngữ đang bật', icon: FileText, tone: 'blue', visible: viewPois },
     { label: 'Bản nội dung có audio', value: audioCount, note: 'Không tính địa điểm lưu trữ', icon: FileAudio, tone: 'pink', visible: viewPois },
     { label: 'Địa điểm có mã QR', value: withQr, note: `Trên ${pois.length} địa điểm chưa lưu trữ`, icon: QrCode, tone: 'mint', visible: viewPois },
-    { label: 'Audio đang chờ / xử lý', value: queued, note: `${completed} hoàn tất · ${failed} thất bại`, icon: Sparkles, tone: 'peach', visible: viewAudio },
+    { label: 'Thiết bị đang hoạt động', value: activeDevices, note: presenceError ? 'Không thể tải trạng thái thiết bị' : 'Có tín hiệu trong 2 phút gần nhất', icon: Smartphone, tone: 'peach', visible: viewPois },
   ].filter(card => card.visible)
   const categoryCounts = new Map<string, number>()
   for (const poi of data.pois) {
@@ -91,7 +112,7 @@ export function Statistics() {
   if (!viewPois && !viewAudio) return null
   return <section className="home-statistics" aria-label="Thống kê tổng quan" aria-busy={busy}>
     <div className="stat-cards">{cards.map(({ label, value, note, icon: Icon, tone }) => <article className="panel stat-card" key={label}>
-      <div><p>{label}</p><strong>{number(value)}</strong><small>{note}</small></div><span className={`stat-icon stat-${tone}`}><Icon size={19} /></span>
+      <div><p>{label}</p><strong>{value === null ? '—' : number(value)}</strong><small>{note}</small></div><span className={`stat-icon stat-${tone}`}><Icon size={19} /></span>
     </article>)}</div>
     <div className={`stat-charts ${!viewPois ? 'stat-charts-single' : ''}`}>
       {viewPois && <article className="panel stat-category"><h2>Địa điểm theo danh mục</h2><p className="stat-caption">Toàn bộ địa điểm, kể cả đã lưu trữ</p>

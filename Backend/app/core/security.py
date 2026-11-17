@@ -7,7 +7,7 @@ from fastapi import Depends, Request
 from app.core.config import COOKIE, PERMISSIONS, settings
 from app.core.utils import fail, now, public
 from app.db.connection import database
-from app.modules.auth.sessions import credential_fingerprint
+from app.modules.auth.sessions import credential_fingerprint, local_mfa_bypass_enabled
 
 
 def password_hash(password, salt=None):
@@ -41,7 +41,7 @@ def current_user(request: Request):
     with database.connection() as connection, connection.cursor() as cursor:
         cursor.execute("SELECT credential_hash,mfa_verified FROM auth_session_assurance WHERE token_hash=%s", (session["_id"],))
         assurance = cursor.fetchone()
-    if not assurance or not hmac.compare_digest(assurance["credential_hash"], credential_fingerprint(user)) or (user["role_id"] == "super_admin" and not assurance["mfa_verified"]):
+    if not assurance or not hmac.compare_digest(assurance["credential_hash"], credential_fingerprint(user)) or (user["role_id"] == "super_admin" and not assurance["mfa_verified"] and not local_mfa_bypass_enabled(request)):
         fail(401, "UNAUTHENTICATED", "Please sign in.")
     if not user_permissions(user):
         fail(403, "ADMIN_ACCESS_DENIED", "This account has no Admin permissions.")

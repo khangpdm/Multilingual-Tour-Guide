@@ -41,6 +41,29 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .audit-entry summary { cursor: pointer; font-size: 13px; overflow-wrap: anywhere; }
 .audit-entry summary span, .audit-entry time { margin-left: 14px; color: var(--muted-foreground); font-size: 12px; }
 .audit-entry pre { background: #f3f7f5; padding: 14px; max-height: 350px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }
+.history-comparison { margin: 16px 0; }
+.history-toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.history-toolbar p { margin: 0; font-size: 13px; }
+.history-table-scroll { max-width: 100%; overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+.history-table { width: 100%; min-width: 600px; table-layout: fixed; border-collapse: collapse; }
+.history-table caption { text-align: left; padding: 12px; font-size: 12px; color: var(--muted-foreground); }
+.history-table th, .history-table td { padding: 14px; text-align: left; vertical-align: top; white-space: pre-wrap; overflow-wrap: anywhere; border-bottom: 1px solid var(--border); font-size: 13px; }
+.history-table thead th { background: #f3f7f5; }
+.history-table th:first-child { width: 24%; }
+.history-table tbody th { font-weight: 500; }
+.history-table .history-changed td { background: #fffaf0; }
+.history-change-label { display: block; margin-top: 6px; font-size: 11px; color: #865b12; }
+.history-empty { color: var(--muted-foreground); }
+.history-images { display: flex; flex-wrap: wrap; gap: 10px; }
+.history-images figure { width: 110px; margin: 0; }
+.history-images img { width: 100%; height: 80px; object-fit: cover; border-radius: 6px; }
+.history-images figcaption { margin-top: 4px; font-size: 11px; }
+.history-audio { display: grid; gap: 8px; }
+.history-audio audio { width: 100%; min-width: 0; }
+.audit-target { font-size: 13px; margin: 14px 0; }
+.audit-value-list { margin: 0; padding-left: 18px; }
+.audit-value-list li + li { margin-top: 6px; }
+.audit-image { display: block; max-width: 100%; width: 140px; height: 100px; object-fit: cover; border-radius: 6px; }
 .admin-image-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .admin-image-grid figure { margin: 0; min-width: 0; }
 .admin-image-grid img { width: 100%; height: 160px; object-fit: cover; border-radius: 9px; }
@@ -69,6 +92,18 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .crud-dialog-head h2 { margin: 0; font-size: 18px; }
 .crud-dialog .admin-form { gap: 15px; }
 .crud-dialog .admin-notice { margin: 0; }
+.crud-dialog.dialog-wide { width: min(1100px, calc(100vw - 32px)); max-width: calc(100vw - 32px); max-height: calc(100dvh - 40px); }
+.record-list { display: grid; gap: 10px; }
+.record-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; padding: 16px; text-align: left; border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--foreground); font: inherit; cursor: pointer; }
+.record-row:hover { background: #f3f7f5; border-color: var(--primary); }
+.record-row-title { display: grid; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.record-row-title strong { font-size: 13px; font-weight: 600; }
+.record-row-title > span, .record-row-title time { margin: 0; font-size: 12px; color: var(--muted-foreground); }
+.record-row-action { flex-shrink: 0; color: var(--primary-dark); font-size: 12px; }
+.record-dialog-meta { display: flex; flex-wrap: wrap; gap: 10px 24px; font-size: 13px; }
+.record-dialog-meta p { margin: 0; }
+.record-dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+@media (max-width: 600px) { .record-row { align-items: flex-start; flex-direction: column; gap: 10px; } .crud-dialog.dialog-wide { padding: 16px; } }
 .row-actions { display: flex; align-items: center; gap: 12px; white-space: nowrap; }
 .crud-dialog .detail-list { display: grid; gap: 0; }
 .crud-dialog .detail-list p { display: flex; justify-content: space-between; gap: 18px; margin: 0; padding: 13px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
@@ -143,8 +178,26 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .offline-building { background: #fff3d6; color: #795c17; }
 .offline-parts { display: flex; gap: 12px; flex-wrap: wrap; margin: 18px 0; }
 .offline-parts > div { display: grid; gap: 6px; padding: 12px 18px; background: #f5f7f5; border-radius: 10px; min-width: 125px; }
+.poi-location-picker { margin: 20px 0; min-width: 0; }
+.poi-location-picker h3 { margin: 0 0 8px; }
+.poi-location-picker > p { margin: 8px 0 12px; }
+.poi-location-picker .admin-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; }
+.poi-location-map { height: 360px; width: 100%; border: 1px solid #cbdde5; border-radius: 12px; z-index: 0; background: #edf3f5; }
+.poi-location-map img { max-width: none; }
+.poi-location-map .leaflet-control a { color: #164458; }
+.poi-location-pin span { display: block; width: 26px; height: 26px; border: 3px solid white; border-radius: 50% 50% 50% 0; background: #df493e; transform: rotate(-45deg); box-shadow: 0 2px 8px #16374766; }
+.poi-location-advanced { margin: 12px 0; }
+.poi-location-advanced summary { cursor: pointer; color: #087fa7; margin-bottom: 12px; }
+@media (max-width: 760px) { .poi-location-map { height: 300px; } }
 .offline-problems { padding: 12px; border: 1px solid #e8d5b4; border-radius: 10px; background: #fffaf0; }
-.offline-problems ul { max-height: 240px; overflow: auto; }
+.offline-problems h3 { margin: 0 0 8px; font-size: 16px; }
+.offline-problems > p { margin: 0 0 12px; }
+.offline-problem-list { display: grid; gap: 12px; }
+.offline-problem-item { padding: 12px; border: 1px solid #e8d5b4; border-radius: 8px; background: #fff; }
+.offline-problem-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.offline-problem-heading strong { overflow-wrap: anywhere; }
+.offline-problems ul { margin: 8px 0 0; padding-left: 22px; list-style: disc; }
+.offline-problems li { margin-top: 6px; overflow-wrap: anywhere; }
 @media (max-width: 760px) { .poi-review-grid { grid-template-columns: 1fr; } .admin-actions { flex-wrap: wrap; } .tabs { overflow-x: auto; } .offline-release { padding: 14px; } }
 #admin-notifications [data-sonner-toast][data-styled='true'] {
   padding-right: 52px;

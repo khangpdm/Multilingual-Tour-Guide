@@ -304,6 +304,7 @@ class MySQLDatabase:
             self._ensure_column(cur, "zone", "boundary", "JSON NULL")
             cur.execute("CREATE TABLE IF NOT EXISTS poi_versions (poi_id VARCHAR(36) NOT NULL,content_version INT NOT NULL,document JSON NOT NULL,saved_by VARCHAR(36) NOT NULL,created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),PRIMARY KEY(poi_id,content_version)) ENGINE=InnoDB")
             cur.execute("CREATE TABLE IF NOT EXISTS admin_settings (name VARCHAR(100) PRIMARY KEY,value JSON NOT NULL) ENGINE=InnoDB")
+            cur.execute("CREATE TABLE IF NOT EXISTS mobile_presence (installation_id CHAR(36) CHARACTER SET ascii PRIMARY KEY,last_seen_at DATETIME(3) NOT NULL,KEY idx_presence_last_seen (last_seen_at)) ENGINE=InnoDB")
             cur.execute("INSERT IGNORE INTO admin_settings (name,value) VALUES ('geofence_radius_m','30')")
             cur.execute("SELECT value FROM admin_settings WHERE name='prd_v2_migrated'")
             if not cur.fetchone():

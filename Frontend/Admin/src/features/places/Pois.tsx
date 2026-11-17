@@ -1,3 +1,4 @@
+import { AuditEntry } from '../audit/AuditEntry'
 import { toast } from 'sonner'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -8,6 +9,8 @@ import { ContentFields, PoiContentEditor } from './PoiContent'
 import { PoiImages, PoiQr } from './PoiMedia'
 import { categories, PoiReview } from './PoiReview'
 import { PoiHistory } from './PoiHistory'
+import { PoiLocationPicker } from './PoiLocationPicker'
+import { locationInZone, validLocation } from './location'
 import { Empty, Field, Heading, Notice, Status, usePagination } from '../../shared/ui'
 
 export function Pois() {
@@ -65,6 +68,9 @@ export function PoiEditor({ id }: { id: string }) {
     event.preventDefault()
     try {
       const content = draft.content.en
+      if (!validLocation(draft.location)) throw new Error('Vui lòng chọn vị trí hợp lệ trên bản đồ.')
+      const zone = data.zones.find(item => item.zone_id === draft.zone_id)
+      if (zone && !locationInZone(draft.location, zone)) throw new Error('Vị trí nằm ngoài khu vực đã chọn. Hãy chọn lại trên bản đồ hoặc đổi khu vực.')
       if (!original && (!content?.name.trim() || !content.text.trim())) throw new Error('Cần tên và kịch bản tiếng Anh.')
       const body = { category: draft.category, zone_id: draft.zone_id, location: draft.location, priority: draft.priority || 0, ...(!original ? { content: { en: { name: content.name.trim(), address: content.address || null, description: content.description || null, introduction: content.introduction || null, text: content.text.trim() } } } : {}) }
       const result = await mutate<{ poi: Poi }>({ permission: original ? 'poi.edit' : 'poi.create', path: original ? `/admin/pois/${id}` : '/admin/pois', method: original ? 'PUT' : 'POST', version: draft.content_version, body, action: original ? 'poi.update' : 'poi.create', target: draft.poi_id, demo: current => ({ ...current, pois: original ? current.pois.map(poi => poi.poi_id === id ? { ...draft, content_version: poi.content_version + 1, updated_at: stamp() } : poi) : [...current.pois, { ...draft, qr_code: crypto.randomUUID().replaceAll('-', '') }] }) })
@@ -95,11 +101,10 @@ export function PoiEditor({ id }: { id: string }) {
         <div className="form-grid">
           <Field label="Khu vực"><select required value={draft.zone_id} onChange={event => setDraft({ ...draft, zone_id: event.target.value })}><option value="">Chọn khu vực</option>{data.zones.filter(zone => zone.is_active || zone.zone_id === draft.zone_id).map(zone => <option key={zone.zone_id} value={zone.zone_id}>{zone.name}{!zone.is_active && ' (đã tắt)'}</option>)}</select></Field>
           <Field label="Danh mục"><select value={draft.category} onChange={event => setDraft({ ...draft, category: event.target.value })}>{Object.entries(categories).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
-          <Field label="Vĩ độ"><input required type="number" min={-90} max={90} step="any" value={draft.location.lat} onChange={event => setDraft({ ...draft, location: { ...draft.location, lat: event.target.valueAsNumber } })} /></Field>
-          <Field label="Kinh độ"><input required type="number" min={-180} max={180} step="any" value={draft.location.lng} onChange={event => setDraft({ ...draft, location: { ...draft.location, lng: event.target.valueAsNumber } })} /></Field>
           <Field label="Độ ưu tiên"><input required type="number" min={0} max={10000} value={draft.priority || 0} onChange={event => setDraft({ ...draft, priority: event.target.valueAsNumber })} /></Field>
           <Field label="Bán kính chung do Admin cấu hình"><input readOnly value={`${draft.geofence_radius_m} m`} /></Field>
         </div>
+        <PoiLocationPicker value={draft.location} zone={data.zones.find(zone => zone.zone_id === draft.zone_id)} disabled={!editable || busy} onChange={location => { setDraft(current => ({ ...current, location })); setDirty(true) }} />
         {!original && <><h3>Nội dung tiếng Anh bắt buộc</h3><ContentFields value={draft.content.en} onChange={content => setDraft({ ...draft, content: { en: content } })} /><Notice>POI hoạt động ngay sau khi lưu. Hệ thống tự tạo tác vụ audio tiếng Anh; bạn có thể thay bằng MP3.</Notice></>}
         {editable && <button className="primary-button">Lưu thông tin</button>}
       </fieldset>{original && <small>Cập nhật: {dateLabel(original.updated_at)}</small>}</form>}
@@ -108,7 +113,7 @@ export function PoiEditor({ id }: { id: string }) {
       {tab === 'QR' && original && <PoiQr poi={original} />}
       {tab === 'Kiểm tra & xem trước' && original && <PoiReview poi={original} />}
       {tab === 'Lịch sử phiên bản' && original && <PoiHistory poi={original} />}
-      {tab === 'Nhật ký' && (can('audit.view') ? data.audit.filter(log => log.target_id === id).map(log => <details key={log.log_id}><summary>{log.action} · {dateLabel(log.timestamp)}</summary><pre>{JSON.stringify({ before: log.before, after: log.after }, null, 2)}</pre></details>) : <Empty text="Bạn không có quyền xem nhật ký." />)}
+      {tab === 'Nhật ký' && (can('audit.view') ? <>{data.audit.filter(log => log.target_id === id).map(log => <AuditEntry key={log.log_id} log={log} />)}{!data.audit.some(log => log.target_id === id) && <Empty text="Chưa có nhật ký cho địa điểm này." />}</> : <Empty text="Bạn không có quyền xem nhật ký." />)}
     </section>
   </>
 }

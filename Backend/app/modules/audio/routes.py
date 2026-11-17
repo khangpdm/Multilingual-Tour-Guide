@@ -38,7 +38,7 @@ def query(statement, parameters=(), one=False):
 
 
 def task_record(task_id):
-    record = query("SELECT * FROM audio_tasks WHERE id=%s", (task_id,), one=True)
+    record = query("SELECT audio_tasks.*, users.full_name AS created_by_name, users.email AS created_by_email FROM audio_tasks LEFT JOIN users ON users.id=audio_tasks.created_by WHERE audio_tasks.id=%s", (task_id,), one=True)
     if not record:
         fail(404, "NOT_FOUND", "Audio task not found.")
     return record
@@ -109,7 +109,7 @@ def execute_task(task_id, user):
 
 @router.get("/admin/audio-tasks")
 def tasks(page: int = Query(1, ge=1), page_size: int = Query(100, ge=1, le=100), user=Depends(require("audio.view_tasks"))):
-    items = query("SELECT * FROM audio_tasks ORDER BY created_at DESC LIMIT %s OFFSET %s", (page_size, (page - 1) * page_size))
+    items = query("SELECT audio_tasks.*, users.full_name AS created_by_name, users.email AS created_by_email FROM audio_tasks LEFT JOIN users ON users.id=audio_tasks.created_by ORDER BY audio_tasks.created_at DESC LIMIT %s OFFSET %s", (page_size, (page - 1) * page_size))
     total = query("SELECT COUNT(*) AS total FROM audio_tasks", one=True)["total"]
     return {"items": [task_public(item) for item in items], "total": total}
 

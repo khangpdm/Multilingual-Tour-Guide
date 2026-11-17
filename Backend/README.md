@@ -1,5 +1,13 @@
 # Local Admin API
 
+## Mobile integration
+
+See `MOBILE_INTEGRATION.md` for the develop merge, shared POI/media endpoints,
+real mobile offline downloads, QR playback and device acceptance steps.
+Use `start_local.py --mobile-lan` to expose only the public mobile API on port
+8002 while keeping Admin and TTS loopback-only. Do not bind the local-bypass
+Admin API to a public/LAN interface.
+
 ## PRD v2 update (2026-11-17)
 
 The current POI/Zone/language contract and migration notes are in
@@ -35,6 +43,65 @@ Omit `--reset-password` to create or assign the seed username without changing a
 Run the UI separately from `Frontend/Admin` using `npm run dev`. Keep `VITE_API_BASE_URL` empty to use the Vite proxy. API health: `http://127.0.0.1:8000/health`. Bind to loopback for local development.
 
 ## Data and limitations
+
+### Local Windows TTS (English and Vietnamese)
+
+This optional service uses installed Windows speech voices, converts PCM to
+128 kbps MP3 with LAME, and implements the existing backend speech-provider
+contract. It does not send scripts to a cloud provider or require a cloud key.
+Only languages with an installed Windows voice are supported; no substitute
+language is silently selected. This is a local development service, not a
+production/distributed worker.
+
+Install the optional dependencies from `Backend`:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-local-tts.txt
+```
+
+Set `TTS_ENDPOINT=http://127.0.0.1:8001/speech` and a random `TTS_API_KEY` in
+`Backend/.env` (see `.env.tts.example`). Both servers read the same local secret;
+restart both after changes. Never put this key in frontend variables or Git.
+Start both backend and TTS with one command from the repository root:
+
+```powershell
+.\Backend\.venv\Scripts\python.exe .\Backend\start_local.py
+```
+
+Or from `Backend`, run `.\.venv\Scripts\python.exe start_local.py`.
+Stop any previously started backend/TTS instances first. The launcher refuses
+occupied ports rather than killing existing processes. It waits for authenticated
+TTS health before starting the backend, keeps both servers in the current
+terminal, and stops its own servers on Ctrl+C or if either server exits.
+Keep this terminal open. The Admin frontend still runs separately.
+To run only TTS, use `.\.venv\Scripts\python.exe -m uvicorn local_tts.server:app --host 127.0.0.1 --port 8001 --no-proxy-headers` from `Backend`.
+
+The local TTS server requires this bearer secret and loopback requests, has
+no CORS access for browser clients, limits scripts to 5000 characters, and
+serializes synthesis. Keep it bound to loopback, with proxy headers disabled.
+Authenticated GET `/health` lists installed voices. Windows PowerShell is
+launched hidden with a process-only execution-policy override for the bundled
+script; no persistent policy or registry changes are made.
+
+Then restart the main backend and reload Admin. Create a POI or request audio
+generation from its saved script. Earlier failed jobs remain in history and
+can be retried if their script/audio fingerprint still matches. Existing uploaded
+MP3 is protected unless the administrator explicitly allows replacement. For
+an unambiguous test, create a separate POI rather than overwrite uploaded audio.
+
+### Local development without email OTP
+
+For loopback-only development, set `APP_ENV=development` and
+`ADMIN_LOCAL_MFA_BYPASS=true` in `Backend/.env`, then restart the backend.
+Email/password validation, rate limits and account locks still apply. This
+exception requires both a loopback client address and a localhost/loopback URL.
+Local bypass sessions are not marked MFA-verified and are rejected when the
+exception is disabled or the request is not local. The login audit records the
+bypass. Password-reset email still requires SMTP.
+
+Keep `ADMIN_LOCAL_MFA_BYPASS=false` (the default) in production. Do not expose
+this development server through a tunnel or reverse proxy while bypass is on.
+Before deployment, disable bypass, configure SMTP and use a strong password.
 
 Admin data maps to `users`, `roles`, `permissions`, `role_permissions`, `languages`, `zone`, `poi`, `poi_content`, and `audit_logs`. Hashed sessions use `admin_sessions`. POI coordinates use MySQL `POINT SRID 4326`; localized content is stored per language. Archive metadata uses additive columns so existing rows are retained.
 

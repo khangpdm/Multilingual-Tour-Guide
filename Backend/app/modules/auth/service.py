@@ -85,7 +85,7 @@ def issue_challenge(cursor, user, kind, lifetime, code=None):
     return token
 
 
-def grant_session(cursor, user, old_token):
+def grant_session(cursor, user, old_token, mfa_verified=False):
     current_time = now().replace(tzinfo=None)
     token = secrets.token_urlsafe(32)
     if old_token:
@@ -93,14 +93,14 @@ def grant_session(cursor, user, old_token):
     cursor.execute("DELETE FROM admin_sessions WHERE expires_at<=%s", (current_time,))
     cursor.execute("INSERT INTO admin_sessions (token_hash,user_id,expires_at) VALUES (%s,%s,%s)", (token_hash(token), user["id"], current_time + timedelta(seconds=SESSION_TTL_SECONDS)))
     cursor.execute("DELETE proof FROM auth_session_assurance proof LEFT JOIN admin_sessions session ON session.token_hash=proof.token_hash WHERE session.token_hash IS NULL")
-    cursor.execute("INSERT INTO auth_session_assurance (token_hash,credential_hash,mfa_verified) VALUES (%s,%s,%s)", (token_hash(token), fingerprint(user), user["role_id"] == "super_admin"))
+    cursor.execute("INSERT INTO auth_session_assurance (token_hash,credential_hash,mfa_verified) VALUES (%s,%s,%s)", (token_hash(token), fingerprint(user), mfa_verified))
     cursor.execute("UPDATE users SET last_login_at=%s WHERE id=%s", (current_time, user["id"]))
     cursor.execute("UPDATE auth_account_security SET failed_attempts=0,locked_until=NULL WHERE user_id=%s", (user["id"],))
-    write_audit(cursor, user, "login_success")
+    write_audit(cursor, user, "login_success", {"mfa_bypassed_local": True} if user["role_id"] == "super_admin" and not mfa_verified else None)
     return token
 
 
-def login_email(email, password, old_token=None):
+def login_email(email, password, old_token=None, *, local_mfa_bypass=False):
     with transaction() as (connection, cursor):
         cursor.execute("SELECT * FROM users WHERE email=%s FOR UPDATE", (email,))
         user = cursor.fetchone()
@@ -123,7 +123,7 @@ def login_email(email, password, old_token=None):
         mapped = {**user, "_id": user["id"], "status": "active"}
         if not user_permissions(mapped):
             reject(connection, 403, "ADMIN_ACCESS_DENIED", "Tài khoản không có quyền truy cập Admin.")
-        if user["role_id"] == "super_admin":
+        if user["role_id"] == "super_admin" and not local_mfa_bypass:
             code = f"{secrets.randbelow(1000000):06d}"
             challenge = issue_challenge(cursor, user, "mfa", 300, code)
             result = {"mfa_required": True, "challenge_token": challenge, "expires_in": 300}
@@ -174,7 +174,7 @@ def verify_mfa(challenge_token, code, old_token=None):
             cursor.execute("UPDATE auth_challenges SET attempts=%s WHERE token_hash=%s", (attempts, digest))
             reject(connection, 401, "INVALID_OTP", f"Mã OTP không đúng. Còn {3 - attempts} lần thử.")
         cursor.execute("DELETE FROM auth_challenges WHERE token_hash=%s", (digest,))
-        return {"session_token": grant_session(cursor, user, old_token), "user_id": user["id"]}
+        return {"session_token": grant_session(cursor, user, old_token, mfa_verified=True), "user_id": user["id"]}
 
 
 def request_password_reset(email):

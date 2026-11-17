@@ -4,7 +4,7 @@ from urllib.parse import quote, urlsplit
 
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import Field
 
@@ -69,25 +69,48 @@ def delete_image(poi_id: str, filename: str, version=Depends(expected_version), 
 
 
 
-@router.get("/admin/pois/{poi_id}/qr/image")
-def qr_image(poi_id: str, user=Depends(require("poi.view"))):
+def qr_details(poi_id: str, request: Request):
     poi = get_record("pois", poi_id)
     if poi.get("is_archived"):
         fail(410, "QR_INACTIVE", "This POI is archived.")
     if not poi.get("qr_code"):
         fail(404, "QR_MISSING", "Assign a QR code first.")
-    buffer = io.BytesIO()
+    local_request = (
+        settings.get("APP_ENV", "production").lower() == "development"
+        and request.client is not None
+        and request.client.host in {"127.0.0.1", "::1"}
+        and request.url.hostname in {"localhost", "127.0.0.1", "::1"}
+    )
     base = (settings.get("PUBLIC_APP_URL") or "").rstrip("/")
+    preview = False
+    if not base and local_request:
+        base = (settings.get("ADMIN_PUBLIC_URL") or "http://localhost:3000").rstrip("/")
+        preview = True
     try:
         parsed = urlsplit(base)
         if parsed.port == 0:
             raise ValueError("Invalid public application port.")
     except ValueError:
         fail(503, "QR_BASE_URL_NOT_CONFIGURED", "Configure PUBLIC_APP_URL as the public HTTPS application URL.")
-    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment or any(character.isspace() for character in base) or "\\" in base:
+    loopback = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+    local_http = local_request and loopback and parsed.scheme == "http"
+    if (parsed.scheme != "https" and not local_http) or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment or any(character.isspace() for character in base) or "\\" in base or (preview and not loopback):
         fail(503, "QR_BASE_URL_NOT_CONFIGURED", "Configure PUBLIC_APP_URL as the public HTTPS application URL.")
-    image = qrcode.make(base + "/q/" + quote(poi["qr_code"], safe="")).convert("RGB")
+    if loopback and not local_request:
+        fail(503, "QR_BASE_URL_NOT_CONFIGURED", "A loopback QR URL is only allowed for local development.")
     name = poi.get("content", {}).get("en", poi.get("content", {}).get("vi", {})).get("name", poi_id)
+    return {"qr_code": poi["qr_code"], "target_url": base + "/q/" + quote(poi["qr_code"], safe=""), "poi_name": name, "is_local_preview": preview or loopback}
+
+@router.get("/admin/pois/{poi_id}/qr/info")
+def qr_info(poi_id: str, request: Request, user=Depends(require("poi.view"))):
+    return qr_details(poi_id, request)
+
+@router.get("/admin/pois/{poi_id}/qr/image")
+def qr_image(poi_id: str, request: Request, user=Depends(require("poi.view"))):
+    details = qr_details(poi_id, request)
+    buffer = io.BytesIO()
+    image = qrcode.make(details["target_url"]).convert("RGB")
+    name = details["poi_name"]
     font_path = settings.get("QR_FONT_PATH") or (os.path.join(os.environ.get("WINDIR", "C:/Windows"), "Fonts", "arial.ttf") if os.name == "nt" else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
     font = ImageFont.truetype(font_path, 18) if os.path.isfile(font_path) else ImageFont.load_default(size=18)
     lines, current = [], ""
@@ -99,6 +122,8 @@ def qr_image(poi_id: str, user=Depends(require("poi.view"))):
         current += character
     if current:
         lines.append(current)
+    if details["is_local_preview"]:
+        lines.append("QR THU NGHIEM LOCAL")
     output = Image.new("RGB", (image.width, image.height + 28 * len(lines) + 16), "white")
     output.paste(image, (0, 0))
     draw = ImageDraw.Draw(output)

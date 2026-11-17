@@ -1,12 +1,8 @@
-import os
 from contextlib import asynccontextmanager
 
 import asyncmy
-from dotenv import load_dotenv
 from fastapi import FastAPI
 from app.core.config import settings
-
-load_dotenv()
 
 MYSQL_HOST = settings.get("MYSQL_HOST", "127.0.0.1")
 MYSQL_PORT = int(settings.get("MYSQL_PORT", 3306))

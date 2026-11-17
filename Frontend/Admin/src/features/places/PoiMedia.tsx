@@ -1,9 +1,9 @@
 import { toast } from 'sonner'
-import { useState } from 'react'
-import { apiBase, assetUrl } from '../../admin/api'
+import { useEffect, useState } from 'react'
+import { api, apiBase, apiFetch, ApiError, assetUrl, responseError } from '../../admin/api'
 import { poiName, useAdmin } from '../../admin/store'
 import type { Poi } from '../../admin/types'
-import { downloadApi, Empty, Field, Notice } from '../../shared/ui'
+import { Empty, Field, Notice, saveBlob } from '../../shared/ui'
 
 export function PoiImages({ poi }: { poi: Poi }) {
   const { can, mode, busy, mutate } = useAdmin()
@@ -50,22 +50,63 @@ export function PoiImages({ poi }: { poi: Poi }) {
   </div>
 }
 
-export function PoiQr({ poi }: { poi: Poi }) {
-  const { can, busy, mode } = useAdmin()
+type QrInfo = { qr_code: string; target_url: string; poi_name: string; is_local_preview: boolean }
+type QrPreview = QrInfo & { imageUrl: string; blob: Blob }
 
-  const [loaded, setLoaded] = useState('')
-  const url = `${apiBase}/admin/pois/${poi.poi_id}/qr/image?code=${encodeURIComponent(poi.qr_code || '')}`
-  async function download() {
-    try { await downloadApi(`/admin/pois/${poi.poi_id}/qr/image`, `qr-${poi.poi_id}.png`) } catch (error) { toast.error((error as Error).message) }
+export function PoiQr({ poi }: { poi: Poi }) {
+  const { mode } = useAdmin()
+  const [preview, setPreview] = useState<QrPreview | null>(null)
+  const [loaded, setLoaded] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [attempt, setAttempt] = useState(0)
+  const name = poiName(poi)
+  useEffect(() => {
+    const controller = new AbortController()
+    let imageUrl = ''
+    setPreview(null); setLoaded(false); setError(''); setLoading(false)
+    if (mode !== 'live' || !poi.qr_code || poi.status === 'archived') return
+    setLoading(true)
+    async function load() {
+      try {
+        const path = `/admin/pois/${poi.poi_id}/qr`
+        const info = await api<QrInfo>(`${path}/info`, { signal: controller.signal })
+        const response = await apiFetch(`${apiBase}${path}/image`, { credentials: 'include', signal: controller.signal })
+        if (!response.ok) {
+          const body = await response.json().catch(() => null)
+          throw new ApiError(body?.error?.message || responseError(response.status), response.status, body?.error?.code)
+        }
+        if (!response.headers.get('Content-Type')?.includes('image/png')) throw new Error('Máy chủ không trả về ảnh QR hợp lệ.')
+        const blob = await response.blob()
+        if (controller.signal.aborted) return
+        imageUrl = URL.createObjectURL(blob)
+        setPreview({ ...info, imageUrl, blob })
+      } catch (reason) {
+        if (controller.signal.aborted) return
+        if (reason instanceof ApiError && reason.status === 401) window.dispatchEvent(new Event('admin-session-expired'))
+        setError(reason instanceof ApiError && reason.code === 'QR_BASE_URL_NOT_CONFIGURED' ? 'Chưa cấu hình địa chỉ ứng dụng cho QR. Bản triển khai thật cần PUBLIC_APP_URL là URL HTTPS; bản thử local cần APP_ENV=development và truy cập từ máy này.' : (reason as Error).message)
+      } finally { if (!controller.signal.aborted) setLoading(false) }
+    }
+    void load()
+    return () => { controller.abort(); if (imageUrl) URL.revokeObjectURL(imageUrl) }
+  }, [poi.poi_id, poi.qr_code, poi.status, name, mode, attempt])
+  function print() {
+    document.body.classList.add('printing-poi-qr')
+    try { window.print() } finally { document.body.classList.remove('printing-poi-qr') }
   }
   return <div className="admin-form">
-    
     <Field label="Mã định danh QR"><input readOnly value={poi.qr_code || ''} placeholder="Chưa cấp mã" /></Field>
-    {poi.qr_code && mode === 'live' && poi.status !== 'archived' && <section className="qr-print-card"><img key={url} src={url} width={260} alt={`Mã QR của ${poiName(poi)}`} onLoad={() => setLoaded(url)} onError={() => { setLoaded(''); toast.error('Không tải được QR. Kiểm tra phiên đăng nhập và PUBLIC_APP_URL ở backend.') }} /><h2>{poiName(poi)}</h2><p>Quét mã để mở thuyết minh địa điểm</p><small>{poi.qr_code}</small></section>}
+    {loading && <Empty text="Đang tạo bản xem trước QR…" />}
+    {error && <div><p className="admin-error" role="alert">{error}</p><button type="button" className="secondary-button" onClick={() => setAttempt(value => value + 1)}>Thử lại</button></div>}
+    {preview && !error && <>
+      {preview.is_local_preview && <Notice>QR thử nghiệm local: mở đường dẫn trên máy này để nghe audio. Ứng dụng mobile có thể đọc token bằng màn Quét QR khi đã cấu hình kết nối backend. Camera điện thoại thông thường không mở được địa chỉ localhost; phát hành cho khách cần PUBLIC_APP_URL HTTPS truy cập được.</Notice>}
+      <Field label="Đường dẫn được mã hóa trong QR"><input readOnly value={preview.target_url} /></Field>
+      <section className="qr-print-card"><img key={preview.imageUrl} src={preview.imageUrl} width={260} alt={`Mã QR của ${preview.poi_name}`} onLoad={() => setLoaded(true)} onError={() => { setLoaded(false); setError('Không hiển thị được ảnh QR. Vui lòng thử tải lại.') }} /><h2>{preview.poi_name}</h2><p>{preview.is_local_preview ? 'QR thử nghiệm local · Quét trong ứng dụng đã kết nối backend' : 'Quét mã để mở địa điểm trên ứng dụng người dùng'}</p><small>{preview.qr_code}</small></section>
+      <div className="admin-actions"><button type="button" className="secondary-button" disabled={!loaded} onClick={() => saveBlob(preview.blob, `qr-${preview.is_local_preview ? 'test-' : ''}${poi.poi_id}.png`)}>Tải PNG{preview.is_local_preview ? ' thử nghiệm' : ''}</button><button type="button" className="secondary-button" disabled={!loaded} onClick={print}>In kèm tên địa điểm</button></div>
+      {!preview.is_local_preview && <Notice>Ảnh QR chứa đường dẫn ở trên. Chỉ xác nhận quét mở đúng địa điểm sau khi ứng dụng người dùng đã tích hợp và được kiểm thử.</Notice>}
+    </>}
+    {poi.status === 'archived' && <Notice>Địa điểm đã lưu trữ, QR đang ngừng hiệu lực. Khôi phục địa điểm để sử dụng lại mã cũ.</Notice>}
     {mode === 'demo' && <Notice>Ảnh QR và tải/in cần kết nối API thật.</Notice>}
-    <div className="admin-actions">
-      {poi.qr_code && mode === 'live' && poi.status !== 'archived' && <><button className="secondary-button" onClick={() => void download()}>Tải PNG</button><button className="secondary-button" disabled={loaded !== url} onClick={() => { document.body.classList.add('printing-poi-qr'); window.print(); document.body.classList.remove('printing-poi-qr') }}>In kèm tên địa điểm</button></>}
-    </div>
     <Notice>QR được tạo tự động và không đổi suốt vòng đời POI. Khi lưu trữ, QR ngừng có hiệu lực; khôi phục sử dụng lại mã cũ.</Notice>
   </div>
 }

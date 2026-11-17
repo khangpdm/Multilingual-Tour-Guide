@@ -87,9 +87,22 @@ QR tokens are random, unique, auto-created, immutable across edits/archive/resto
 POST `/admin/pois/{id}/qr` reads the existing token; `regenerate:true` returns 409.
 PNG includes the POI name and encodes `PUBLIC_APP_URL + /q/{token}`, not the token
 alone. The public base URL must be a real HTTPS application URL. Missing/invalid
-configuration returns 503 rather than printing a misleading QR. Archived QR
+configuration returns 503 in production rather than printing a misleading QR. Archived QR
 image requests return 410. Public/mobile resolution of `/q/{token}` remains an
 Enduser integration, not an Admin endpoint in this change.
+
+GET `/admin/pois/{id}/qr/info` returns the encoded `target_url`, `qr_code`,
+`poi_name` and `is_local_preview`. It has the same POI-view permission and
+archive checks as the PNG endpoint.
+
+For Admin-only testing, `APP_ENV=development` plus a loopback client and
+localhost/loopback request URL allows a local QR preview without `PUBLIC_APP_URL`.
+The preview uses a loopback `ADMIN_PUBLIC_URL` (default `http://localhost:3000`)
+and the same `/q/{token}` path. It does not implement that public resolver.
+The UI and downloaded PNG explicitly label the QR as a local test; it is not
+usable by customers or phones. HTTP is accepted only for loopback development.
+Non-local requests and production still require a non-loopback HTTPS
+`PUBLIC_APP_URL`. The preview never changes or regenerates the stored QR token.
 
 Add these values to the local environment without committing secrets:
 
