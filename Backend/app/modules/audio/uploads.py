@@ -6,6 +6,7 @@ from app.core.utils import fail, now, update_record
 from app.db.connection import database
 from app.modules.audio.storage import AUDIO_LIMIT, checked_mp3, store_audio_bytes
 from app.modules.pois.routes import editable_poi, poi_public
+from app.modules.pois.versioning import expected_version
 
 router = APIRouter()
 
@@ -15,6 +16,7 @@ async def upload_audio(
     poi_id: str,
     locale: str,
     file: UploadFile = File(...),
+    version=Depends(expected_version),
     user=Depends(require("poi.edit")),
 ):
     try:
@@ -22,8 +24,8 @@ async def upload_audio(
     finally:
         await file.close()
 
-    with mutation_lock:
-        poi = editable_poi(poi_id)
+    with mutation_lock, database.transaction():
+        poi = editable_poi(poi_id, version)
         content = poi.get("content", {}).get(locale)
 
         language = database.fetch_one("languages", {"_id": locale})
@@ -35,6 +37,8 @@ async def upload_audio(
             )
 
         url, checksum = store_audio_bytes(data)
+        with database.connection() as connection, connection.cursor() as cursor:
+            cursor.execute("UPDATE audio_tasks SET state='CANCELLED',finished_at=UTC_TIMESTAMP(3) WHERE poi_id=%s AND language_code=%s AND state IN ('QUEUED','PROCESSING')", (poi_id, locale))
 
         updated_content = {
             **content,

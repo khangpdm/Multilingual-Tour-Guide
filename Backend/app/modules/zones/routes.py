@@ -4,7 +4,9 @@ from app.core.state import mutation_lock
 from app.core.utils import audit, fail, get_record, identifier, now, public, update_record
 from app.core.security import require
 from app.db.connection import database
-from app.modules.zones.schemas import ZoneInput
+from app.modules.zones.schemas import ZoneInput, ZonePatch
+from app.schemas.base import validate_input
+from app.modules.zones.geometry import contains
 
 router = APIRouter()
 @router.get("/admin/zones")
@@ -18,7 +20,13 @@ def zones(user=Depends(require("poi.view"))):
 
 
 def save_zone(body, user, zone_id=None):
-    with mutation_lock:
+    with mutation_lock, database.transaction():
+        if zone_id:
+            existing = get_record("zones", zone_id)
+            body = validate_input(ZoneInput, {**{key: value for key, value in existing.items() if key in ZoneInput.model_fields}, **body.model_dump(exclude_unset=True)})
+            for poi in database.fetch_all("pois", {"zone_id": zone_id, "is_archived": False}):
+                if not contains(body.model_dump(), *poi["location"]["coordinates"]):
+                    fail(409, "ZONE_HAS_OUTSIDE_POIS", "The new boundary excludes an active POI. Move or archive it first.")
         if any(zone.get("name", "").casefold() == body.name.casefold() and zone.get("_id") != zone_id for zone in database.fetch_all("zones")):
             fail(409, "DUPLICATE_NAME", "Zone name already exists.")
         if zone_id:
@@ -36,5 +44,5 @@ def create_zone(body: ZoneInput, user=Depends(require("system.manage_constants")
 
 
 @router.put("/admin/zones/{zone_id}")
-def edit_zone(zone_id: str, body: ZoneInput, user=Depends(require("system.manage_constants"))):
+def edit_zone(zone_id: str, body: ZonePatch, user=Depends(require("system.manage_constants"))):
     return save_zone(body, user, zone_id)

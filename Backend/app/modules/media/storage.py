@@ -5,13 +5,11 @@ import warnings
 from uuid import uuid4
 
 from PIL import Image, UnidentifiedImageError
-from mutagen.mp3 import MP3, HeaderNotFoundError
 
 from app.core.config import MEDIA_ROOT
 from app.core.utils import fail
 
 IMAGE_LIMIT = 5 * 1024 * 1024
-AUDIO_LIMIT = 15 * 1024 * 1024
 
 
 def asset_path(url):
@@ -33,17 +31,6 @@ def store_bytes(data, extension):
     path.write_bytes(data)
     return f"/admin/assets/{path.name}", hashlib.sha256(data).hexdigest()
 
-
-def checked_mp3(data):
-    if not data or len(data) > AUDIO_LIMIT:
-        fail(422, "INVALID_AUDIO", "MP3 must be between 1 byte and 15 MB.")
-    try:
-        audio = MP3(io.BytesIO(data))
-        if audio.info.length <= 0:
-            raise ValueError()
-    except (HeaderNotFoundError, ValueError, EOFError):
-        fail(422, "INVALID_AUDIO", "The uploaded file is not a readable MP3.")
-    return data
 
 
 def checked_image(data):

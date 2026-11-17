@@ -1,5 +1,7 @@
 Phân công backend Admin
 
+> Cập nhật ngày 17/11/2026: PRD.docx v2 là chuẩn nghiệp vụ cho phần POI đang hoàn thiện. Các mô tả cũ bên dưới về POI mới chưa công khai, unpublish/republish và tạo lại QR không còn áp dụng. Dùng active/archived, khôi phục archive, tiếng Anh bắt buộc và audio mặc định, QR bất biến, content_version/snapshot. Hợp đồng API, migration, ranh giới N/H và kiểm thử cập nhật tại Backend/PRD_V2_IMPLEMENTATION.md. Phân công chủ module N/H không đổi.
+
 Multilingual Tour Guide
 
 Thành viên thực hiện Huy và Nhật

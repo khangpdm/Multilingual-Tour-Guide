@@ -64,7 +64,7 @@ def text_hash(content):
 
 def execute_task(task_id, user):
     try:
-        with mutation_lock:
+        with mutation_lock, database.transaction():
             task = task_record(task_id)
             if task["state"] != "QUEUED":
                 return
@@ -81,7 +81,7 @@ def execute_task(task_id, user):
         request = urllib.request.Request(configured(), data=json.dumps({"text": content["text"], "language": locale}).encode(), headers=headers, method="POST")
         with urllib.request.build_opener(NoRedirect).open(request, timeout=60) as response:
             data = checked_mp3(response.read(AUDIO_LIMIT + 1))
-        with mutation_lock:
+        with mutation_lock, database.transaction():
             if task_record(task_id)["state"] != "PROCESSING":
                 return
             latest = editable_poi(task["poi_id"])
@@ -114,7 +114,7 @@ def regenerate(poi_id: str, body: Regenerate, background: BackgroundTasks, user=
     if body.retranslate:
         fail(422, "TRANSLATION_UNAVAILABLE", "Save the translated script first; this provider generates speech only.")
     created, skipped = [], []
-    with mutation_lock:
+    with mutation_lock, database.transaction():
         poi = editable_poi(poi_id)
         for locale in dict.fromkeys(body.locales):
             content = poi.get("content", {}).get(locale, {})
@@ -139,7 +139,7 @@ def regenerate(poi_id: str, body: Regenerate, background: BackgroundTasks, user=
 
 @router.post("/admin/audio-tasks/{task_id}/cancel")
 def cancel(task_id: str, user=Depends(require("audio.cancel_task"))):
-    with mutation_lock:
+    with mutation_lock, database.transaction():
         task = task_record(task_id)
         if task["state"] not in {"QUEUED", "PROCESSING"}:
             fail(409, "INVALID_STATE", "Only active tasks may be cancelled.")
@@ -151,7 +151,7 @@ def cancel(task_id: str, user=Depends(require("audio.cancel_task"))):
 @router.post("/admin/audio-tasks/{task_id}/retry")
 def retry(task_id: str, background: BackgroundTasks, user=Depends(require("audio.retry_task"))):
     configured()
-    with mutation_lock:
+    with mutation_lock, database.transaction():
         task = task_record(task_id)
         if task["state"] not in {"FAILED", "CANCELLED"}:
             fail(409, "INVALID_STATE", "Only failed or cancelled tasks may be retried.")

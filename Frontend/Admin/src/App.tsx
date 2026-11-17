@@ -39,7 +39,7 @@ function Shell({ children, title }: { children: ReactNode; title: string }) {
 function Overview() {
   const { data, can, tableCounts, localDatabase } = useAdmin()
   const navigate = useNavigate()
-  const published = data.pois.filter(poi => poi.status === 'published')
+  const published = data.pois.filter(poi => poi.status === 'active')
   const missing = published.filter(poi => data.languages.some(language => language.is_active && !poi.content[language.code]?.audio_url))
   const statusRows = [['Công khai', 'published', '#28abe3'], ['Chưa công khai', 'unpublished', '#a6dff6'], ['Đã lưu trữ', 'archived', '#536775']] as const
   const localeRows = data.languages.filter(language => language.is_active).map(language => ({ ...language, withText: published.filter(poi => Boolean(poi.content[language.code]?.text?.trim())).length, withAudio: published.filter(poi => Boolean(poi.content[language.code]?.audio_url)).length }))

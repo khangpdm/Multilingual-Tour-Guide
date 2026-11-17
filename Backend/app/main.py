@@ -17,7 +17,7 @@ from app.modules.offline.routes import router as offline_router
 from app.modules.management.routes import router as management_router
 
 app = FastAPI(title="Tour Guide Local Admin API", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=ORIGINS, allow_credentials=True, allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Content-Type"])
+app.add_middleware(CORSMiddleware, allow_origins=ORIGINS, allow_credentials=True, allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Content-Type", "If-Match"])
 install_exception_handlers(app)
 
 

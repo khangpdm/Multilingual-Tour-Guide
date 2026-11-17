@@ -89,7 +89,7 @@ export function Analytics() {
       validate(); const query = params(); setLoadedQuery(query.toString())
       if (mode === 'live') setResult(await api<RecordValue>(`${report!.path}?${query}`))
       else if (reportId === 'gaps') {
-        const pois = data.pois.filter(poi => poi.status === 'published' && (!zone || poi.zone_id === zone))
+        const pois = data.pois.filter(poi => poi.status === 'active' && (!zone || poi.zone_id === zone))
         const codes = data.languages.filter(item => item.is_active).map(item => item.code)
         const missing_translation = pois.map(poi => ({ poi_id: poi.poi_id, missing_locales: codes.filter(code => !poi.content[code]?.text) })).filter(item => item.missing_locales.length)
         const missing_pregen_audio = pois.map(poi => ({ poi_id: poi.poi_id, missing_locales: codes.filter(code => !poi.content[code]?.audio_url) })).filter(item => item.missing_locales.length)
