@@ -17,22 +17,23 @@ export function ContentFields({ value, onChange }: { value: Content; onChange: (
 
 export function PoiContentEditor({ poi }: { poi: Poi }) {
   const { data, can, mutate, busy, mode, capabilities } = useAdmin()
-  const [locale, setLocale] = useState('vi')
-  const [draft, setDraft] = useState<Content>(poi.content.vi || emptyContent())
+  const [locale, setLocale] = useState('en')
+  const [draft, setDraft] = useState<Content>(poi.content.en || emptyContent())
+  const [baseVersion, setBaseVersion] = useState(poi.content_version)
   const [dirty, setDirty] = useState(false)
 
-  const [locales, setLocales] = useState<string[]>(['vi'])
+  const [locales, setLocales] = useState<string[]>(['en'])
   const [replace, setReplace] = useState(false)
   const current = poi.content[locale]
-  useEffect(() => { if (!dirty) setDraft(current || emptyContent()) }, [current, dirty])
+  useEffect(() => { if (!dirty) { setDraft(current || emptyContent()); setBaseVersion(poi.content_version) } }, [current, dirty, poi.content_version])
   const enabled = data.languages.some(language => language.code === locale && language.is_active)
-  const editable = can('poi.edit') && poi.status !== 'archived' && enabled
+  const editable = can('poi.edit') && enabled
   async function save(event: FormEvent) {
     event.preventDefault()
     try {
       const body = { name: draft.name.trim(), address: draft.address?.trim() || null, description: draft.description?.trim() || null, introduction: draft.introduction?.trim() || null, text: draft.text.trim() }
       if (!body.name || !body.text) throw new Error('Tên và kịch bản không được để trống.')
-      await mutate({ permission: 'poi.edit', path: `/admin/pois/${poi.poi_id}/content/${locale}`, method: 'PUT', body, action: 'poi.content_edit', target: poi.poi_id, demo: state => ({ ...state, pois: state.pois.map(item => item.poi_id === poi.poi_id ? { ...item, content: { ...item.content, [locale]: { ...draft, ...body, updated_at: stamp() } } } : item) }) })
+      await mutate({ permission: 'poi.edit', path: `/admin/pois/${poi.poi_id}/content/${locale}`, method: 'PUT', version: baseVersion, body, action: 'poi.content_edit', target: poi.poi_id, demo: state => ({ ...state, pois: state.pois.map(item => item.poi_id === poi.poi_id ? { ...item, content_version: item.content_version + 1, content: { ...item.content, [locale]: { ...draft, ...body, updated_at: stamp() } } } : item) }) })
       setDirty(false)
       toast.success('Đã lưu nội dung. Nếu kịch bản thay đổi, audio TTS cũ được bỏ để tạo lại; audio tải lên được giữ nguyên và cần tự kiểm tra.')
     } catch (error) { toast.error((error as Error).message) }
@@ -44,7 +45,7 @@ export function PoiContentEditor({ poi }: { poi: Poi }) {
       if (dirty || !current) throw new Error('Lưu nội dung trước khi tải audio.')
       if (file.size > 15 * 1024 * 1024) throw new Error('MP3 tối đa 15 MB.')
       const body = new FormData(); body.set('file', file)
-      await mutate({ permission: 'poi.edit', path: `/admin/pois/${poi.poi_id}/content/${locale}/audio`, body, action: 'poi.audio_upload', target: poi.poi_id, demo: state => state })
+      await mutate({ permission: 'poi.edit', path: `/admin/pois/${poi.poi_id}/content/${locale}/audio`, body, version: poi.content_version, action: 'poi.audio_upload', target: poi.poi_id, demo: state => state })
       toast.success('Đã lưu audio và mã SHA-256. Có thể nghe thử bên dưới.')
     } catch (error) { toast.error((error as Error).message) }
   }
@@ -57,12 +58,14 @@ export function PoiContentEditor({ poi }: { poi: Poi }) {
     } catch (error) { toast.error((error as Error).message) }
   }
   return <div className="admin-form">
+    {poi.status === 'archived' && <Notice>POI đang lưu trữ. Bạn có thể bổ sung nội dung tiếng Anh để khôi phục dữ liệu cũ; audio chỉ được tạo sau khi khôi phục.</Notice>}
+    {dirty && baseVersion !== poi.content_version && <Notice>POI đã thay đổi. So sánh dữ liệu trước khi tải lại.<details><summary>Xem khác biệt</summary><pre>{JSON.stringify({ local: draft, server: current }, null, 2)}</pre></details><button type="button" className="secondary-button" onClick={() => { if (window.confirm('Bỏ nội dung chưa lưu và dùng bản mới?')) setDirty(false) }}>Dùng bản mới</button></Notice>}
     <Field label="Ngôn ngữ biên tập"><select value={locale} onChange={event => { if (dirty && !window.confirm('Bỏ nội dung chưa lưu để đổi ngôn ngữ?')) return; setDirty(false); setLocale(event.target.value); }}>{data.languages.map(language => <option key={language.code} value={language.code}>{language.native_name}{language.is_active ? '' : ' (đã tắt)'}</option>)}</select></Field>
     
     <form onSubmit={save}><fieldset disabled={!editable || busy}><ContentFields value={draft} onChange={value => { setDraft(value); setDirty(true) }} />{editable && <button className="primary-button">Lưu nội dung {locale.toUpperCase()}{dirty ? ' *' : ''}</button>}</fieldset></form>
     <section className="regenerate-panel"><h3>Audio của {locale.toUpperCase()}</h3>
       {current?.audio_url ? <><p>Nguồn: {current.audio_source === 'UPLOADED' ? 'MP3 tải lên' : 'TTS'}</p><audio key={current.audio_url} controls preload="metadata" src={assetUrl(current.audio_url)} /><small className="checksum">SHA-256: {current.audio_sha256}</small></> : <Notice>Chưa có audio cho ngôn ngữ này.</Notice>}
-      {editable && <Field label="Tải hoặc thay MP3 tối đa 15 MB"><input type="file" accept="audio/mpeg,.mp3" disabled={busy || dirty || !current || mode !== 'live'} onChange={event => { void upload(event.target.files?.[0]); event.target.value = '' }} /></Field>}
+      {editable && poi.status !== 'archived' && <Field label="Tải hoặc thay MP3 tối đa 15 MB"><input type="file" accept="audio/mpeg,.mp3" disabled={busy || dirty || !current || mode !== 'live'} onChange={event => { void upload(event.target.files?.[0]); event.target.value = '' }} /></Field>}
     </section>
     {can('audio.trigger_regenerate') && poi.status !== 'archived' && <section className="regenerate-panel"><h3>Tạo lại bằng TTS</h3>
       {!capabilities.tts && <Notice>Chưa cấu hình dịch vụ TTS. Bạn vẫn có thể tải MP3; cấu hình TTS_ENDPOINT ở backend để bật tạo audio. Bản dịch được biên tập thủ công.</Notice>}

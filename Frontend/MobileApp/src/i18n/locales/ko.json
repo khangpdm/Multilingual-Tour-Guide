@@ -1,4 +1,20 @@
 {
+  "connection": {
+    "unavailable": "Cannot connect to the backend. Check the API address and network; downloaded content remains available offline."
+  },
+  "offline": {
+    "download": "Download",
+    "refresh": "Refresh releases",
+    "wifiRequired": "Connect to Wi-Fi or turn off Wi-Fi-only downloads in Settings.",
+    "removeTitle": "Remove downloaded pack?",
+    "explanation": "Downloads include images, narration and English fallback. Offline basemap tiles are not included.",
+    "published": "Published by Admin",
+    "failed": "Download failed or storage is unavailable. The previous installed pack is kept. Check your network and try again.",
+    "nativeOnly": "Offline downloads are available in the Android/iOS app, not the web preview.",
+    "empty": "No published packs yet.",
+    "ready": "Saved on this device",
+    "saved": "{{count}} saved packs · {{size}} MB"
+  },
   "common": {
     "home": "홈",
     "explore": "탐색",

@@ -8,8 +8,14 @@ export interface LanguageItem {
 
 export async function fetchActiveLanguages(): Promise<LanguageItem[]> {
   try {
-    const data = await httpGet<{ languages?: LanguageItem[] }>('/languages');
-    return data.languages || [];
+    const data = await httpGet<{ languages?: (LanguageItem & { native_name?: string })[] }>(
+      '/languages'
+    );
+    return (data.languages || []).map((item) => ({
+      code: item.code,
+      name: item.native_name || item.name,
+      flag: item.flag || '🌐',
+    }));
   } catch (error) {
     console.warn(
       '[LanguageService] Không thể tải danh sách ngôn ngữ từ server, dùng dữ liệu dự phòng:',
@@ -19,10 +25,6 @@ export async function fetchActiveLanguages(): Promise<LanguageItem[]> {
     return [
       { code: 'vi', name: 'Tiếng Việt', flag: '🇻🇳' },
       { code: 'en', name: 'English', flag: '🇺🇸' },
-      { code: 'fr', name: 'Français', flag: '🇫🇷' },
-      { code: 'ja', name: '日本語', flag: '🇯🇵' },
-      { code: 'ko', name: '한국어', flag: '🇰🇷' },
-      { code: 'zh', name: '中文', flag: '🇨🇳' },
     ];
   }
 }

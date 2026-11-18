@@ -3,7 +3,9 @@ import { View, Text, Pressable, StatusBar } from 'react-native';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 
 import { useApp } from '@/store/AppContext';
-import { QR_POI_MAP, POIS } from '@/data/pois';
+import { fetchPOIByQR, qrToken } from '@/services/poiService';
+import { ApiError } from '@/services/httpClient';
+import { loadOfflinePOIs } from '@/services/offlineService';
 import { IconFlash, IconClose } from '@/components/Icons';
 import { useTranslation } from 'react-i18next';
 
@@ -11,17 +13,20 @@ type ScanState = 'idle' | 'scanning' | 'success' | 'invalid' | 'missing';
 
 export default function QRScanScreen() {
   const { t } = useTranslation();
-  const { openPOI, language } = useApp();
+  const { openPOI, language, setPoiList } = useApp();
   const [permission, requestPermission] = useCameraPermissions();
   const [flash, setFlash] = useState(false);
   const [state, setState] = useState<ScanState>('idle');
   const [scannedLabel, setScannedLabel] = useState('');
+  const [connectionError, setConnectionError] = useState(false);
+  const generationRef = useRef(0);
 
   const lockedRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
+      generationRef.current += 1;
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, []);
@@ -30,43 +35,60 @@ export default function QRScanScreen() {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = null;
     lockedRef.current = false;
+    generationRef.current += 1;
+    setConnectionError(false);
     setState('idle');
     setScannedLabel('');
   }, []);
 
   const handleBarcodeScanned = useCallback(
-    ({ data, type }: BarcodeScanningResult) => {
+    async ({ data, type }: BarcodeScanningResult) => {
       if (type !== 'qr' || lockedRef.current) return;
 
       lockedRef.current = true;
       setState('scanning');
 
-      const poiId = QR_POI_MAP[data];
+      const token = qrToken(data);
 
-      if (!poiId) {
+      if (!token) {
         setState('invalid');
         return;
       }
 
-      const poi = POIS.find((item) => item.id === poiId);
-
-      if (!poi) {
-        setState('missing');
-        return;
+      const generation = ++generationRef.current;
+      let poi;
+      try {
+        poi = await fetchPOIByQR(token, language);
+      } catch (error) {
+        if (generation !== generationRef.current) return;
+        const notFound = error instanceof ApiError && error.status === 404;
+        if (!notFound) {
+          try {
+            poi = (await loadOfflinePOIs()).find((item) => item.qrCode === token);
+          } catch {}
+        }
+        if (!poi) {
+          setConnectionError(!notFound);
+          setState('missing');
+          return;
+        }
       }
-
-      setScannedLabel(poi.name[language] ?? data);
+      if (generation !== generationRef.current) return;
+      setPoiList((current) => [...current.filter((item) => item.id !== poi.id), poi]);
+      setScannedLabel(
+        typeof poi.name === 'string' ? poi.name : poi.name[language] || poi.name.en || ''
+      );
       setState('success');
 
       timerRef.current = setTimeout(() => {
-        openPOI(poiId);
+        openPOI(poi.id);
         timerRef.current = null;
         lockedRef.current = false;
         setState('idle');
         setScannedLabel('');
       }, 700);
     },
-    [openPOI]
+    [openPOI, language, setPoiList]
   );
 
   if (!permission) {
@@ -105,7 +127,11 @@ export default function QRScanScreen() {
     scanning: t('qr.status.scanning'),
     success: t('qr.status.success'),
     invalid: t('qr.status.invalid'),
-    missing: t('qr.status.missing'),
+    missing: connectionError
+      ? t('connection.unavailable', {
+          defaultValue: 'Không kết nối được backend. Kiểm tra địa chỉ API và kết nối mạng.',
+        })
+      : t('qr.status.missing'),
   };
 
   const frameColor =

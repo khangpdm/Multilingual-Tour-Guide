@@ -6,6 +6,7 @@ from dotenv import dotenv_values
 ROOT = Path(__file__).resolve().parents[2]
 settings = {**dotenv_values(ROOT / ".env"), **os.environ}
 ORIGINS = settings.get("ADMIN_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
+MOBILE_ORIGINS = settings.get("MOBILE_ORIGINS", "http://localhost:8081,http://127.0.0.1:8081").split(",")
 COOKIE = "tour_admin_session"
 COOKIE_SECURE = settings.get("ADMIN_COOKIE_SECURE", "false").lower() in {"true", "1"}
 SESSION_TTL_SECONDS = int(settings.get("ADMIN_SESSION_TTL_SECONDS", "28800"))

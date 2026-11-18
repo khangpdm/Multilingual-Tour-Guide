@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import Field, model_validator
 
-from app.schemas.base import Input
+from app.schemas.base import Input, partial_model
 
 
 class Location(Input):
@@ -24,6 +24,7 @@ class PoiFields(Input):
     zone_id: str = Field(min_length=1, max_length=100)
     location: Location
     geofence_radius_m: int = Field(ge=10, le=200, default=30)
+    priority: int = Field(ge=0, le=10000, default=0)
 
 
 class PoiCreate(PoiFields):
@@ -31,8 +32,8 @@ class PoiCreate(PoiFields):
 
     @model_validator(mode="after")
     def validate_content(self):
-        if "vi" not in self.content or any(not re.fullmatch(r"[a-z]{2,3}(-[A-Z]{2})?", code) for code in self.content):
-            raise ValueError("Vietnamese content and valid locale codes are required.")
+        if "en" not in self.content or any(not re.fullmatch(r"[a-z]{2,3}(-[A-Z]{2})?", code) for code in self.content):
+            raise ValueError("English content and valid locale codes are required.")
         return self
 
 
@@ -42,3 +43,6 @@ class Reason(Input):
 
 class QrInput(Input):
     regenerate: bool = False
+
+PoiPatch = partial_model("PoiPatch", PoiFields)
+ContentPatch = partial_model("ContentPatch", ContentInput)

@@ -2,18 +2,18 @@ import { toast } from 'sonner'
 import './globals.css'
 import './admin/admin.css'
 import './admin/theme.css'
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { Activity, BarChart3, Search, FileAudio, Globe, LayoutDashboard, Eye, EyeOff, LogOut, MapPin, Menu, ShieldCheck, Users, X } from 'lucide-react'
+import { Activity, BarChart3, Search, FileAudio, Globe, LayoutDashboard, LogOut, MapPin, Menu, ShieldCheck, Users, X } from 'lucide-react'
 import { AdminProvider, dateLabel, useAdmin } from './admin/store'
 import type { Permission } from './admin/types'
-import { api } from './admin/api'
+import { AuthPage } from './features/auth/AuthPage'
 import { Accounts, AudioTasks, AuditLogs, Languages, Roles } from './features/management/Management'
 import { PoiEditor, Pois, ZoneEditor, Zones } from './features/places/Places'
 import { Analytics } from './features/analytics/Analytics'
 import { OfflinePacks } from './features/offline/OfflinePacks'
 import { Statistics } from './features/dashboard/Statistics'
-import { DemoNotice, Empty, Field, Heading, Notice, Status } from './shared/ui'
+import { DemoNotice, Empty, Heading, Status } from './shared/ui'
 
 const navigation: { label: string; href: string; icon: typeof MapPin; permissions?: Permission[] }[] = [
   { label: 'Trang chủ', href: '/', icon: LayoutDashboard },
@@ -39,7 +39,7 @@ function Shell({ children, title }: { children: ReactNode; title: string }) {
 function Overview() {
   const { data, can, tableCounts, localDatabase } = useAdmin()
   const navigate = useNavigate()
-  const published = data.pois.filter(poi => poi.status === 'published')
+  const published = data.pois.filter(poi => poi.status === 'active')
   const missing = published.filter(poi => data.languages.some(language => language.is_active && !poi.content[language.code]?.audio_url))
   const statusRows = [['Công khai', 'published', '#28abe3'], ['Chưa công khai', 'unpublished', '#a6dff6'], ['Đã lưu trữ', 'archived', '#536775']] as const
   const localeRows = data.languages.filter(language => language.is_active).map(language => ({ ...language, withText: published.filter(poi => Boolean(poi.content[language.code]?.text?.trim())).length, withAudio: published.filter(poi => Boolean(poi.content[language.code]?.audio_url)).length }))
@@ -68,35 +68,11 @@ function Overview() {
     {localDatabase && <details className="panel database-summary"><summary>Chi tiết dữ liệu hệ thống</summary><div className="card-header"><div><h2>Bảng dữ liệu MySQL</h2><p className="page-subtitle">Số bản ghi đang lưu trong tourism_db</p></div><strong>{Object.keys(tableCounts).length}/15</strong></div><div className="admin-kpis">{[['Người dùng', 'users'], ['Vai trò', 'roles'], ['Quyền', 'permissions'], ['Gán quyền vai trò', 'role_permissions'], ['Ngôn ngữ', 'languages'], ['Khu vực', 'zone'], ['POI', 'poi'], ['Nội dung POI', 'poi_content'], ['Audio tasks', 'audio_tasks'], ['Sự kiện analytics', 'analytics_events'], ['Mật độ theo giờ', 'poi_density_hourly'], ['Bản phát hành offline', 'offline_pack_releases'], ['Ngôn ngữ offline', 'offline_pack_languages'], ['Audit logs', 'audit_logs'], ['Phiên Admin', 'admin_sessions']].map(([label, table]) => <div className="mini-kpi" key={table}><span>{label}</span><strong>{tableCounts[table] ?? '—'}</strong></div>)}</div></details>}
 </div>
 }
-function AuthPage({ activation = false }: { activation?: boolean }) {
-  const { login, error } = useAdmin()
-  const navigate = useNavigate()
-  const location = useLocation()
-  const [token] = useState(() => new URLSearchParams(location.search).get('token') || '')
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [confirmation, setConfirmation] = useState('')
-  const [name, setName] = useState('')
-
-  const [pending, setPending] = useState(false)
-  const [done, setDone] = useState(false)
-  const [showPassword, setShowPassword] = useState(false)
-  async function submit(event: FormEvent) {
-    event.preventDefault(); setPending(true)
-    try {
-      if (activation) {
-        if (!token) throw new Error('Thiếu token lời mời. Hãy mở liên kết trong email.')
-        if (password.length < 10 || !/\p{L}/u.test(password) || !/\d/.test(password) || password !== confirmation) throw new Error('Mật khẩu cần ít nhất 10 ký tự, có chữ và số; xác nhận phải trùng khớp.')
-        await api('/auth/activate', { method: 'POST', body: JSON.stringify({ token, password, full_name: name }) }); setPassword(''); setConfirmation(''); setDone(true); navigate('/activate', { replace: true }); toast.success('Đã kích hoạt tài khoản. Bạn có thể đăng nhập.');
-      } else { await login(username, password); setPassword(''); toast.success('Đăng nhập thành công.'); navigate('/') }
-    } catch (reason) { toast.error((reason as Error).message) } finally { setPending(false) }
-  }
-  return <main className="auth-page"><div className="auth-layout"><section className="panel auth-card"><div className="auth-card-head"><div className="auth-icon"><img src="/logo.png" alt="Tour Guide Logo" className="auth-logo-img" /></div><p className="auth-eyebrow">MULTILINGUAL TOUR GUIDE</p><h1>{activation ? 'Kích hoạt tài khoản' : 'Chào mừng trở lại'}</h1><p>{activation ? 'Đặt mật khẩu để tiếp tục.' : 'Đăng nhập để vào bảng điều khiển quản trị.'}</p></div>{!done && <form className="admin-form auth-form" onSubmit={submit}>{activation ? <Field label="Họ và tên"><input required autoComplete="name" value={name} onChange={event => setName(event.target.value)} /></Field> : <Field label="Tên đăng nhập"><input type="text" required minLength={3} maxLength={50} autoComplete="username" autoCapitalize="none" spellCheck={false} placeholder="Nhập tên đăng nhập" value={username} onChange={event => setUsername(event.target.value)} /></Field>}<Field label="Mật khẩu"><div className="auth-password"><input type={showPassword ? 'text' : 'password'} required minLength={activation ? 10 : undefined} autoComplete={activation ? 'new-password' : 'current-password'} placeholder={activation ? 'Tối thiểu 10 ký tự' : 'Nhập mật khẩu'} value={password} onChange={event => setPassword(event.target.value)} /><button type="button" aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'} onClick={() => setShowPassword(value => !value)}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></div></Field>{activation && <><p className="auth-hint">Mật khẩu cần ít nhất 10 ký tự, có chữ và số.</p><Field label="Nhập lại mật khẩu"><input type="password" required autoComplete="new-password" placeholder="Nhập lại mật khẩu" value={confirmation} onChange={event => setConfirmation(event.target.value)} /></Field></>}<button className="primary-button auth-submit" disabled={pending}>{pending ? 'Đang xử lý…' : activation ? 'Kích hoạt tài khoản' : 'Đăng nhập'}</button></form>}{error && <Notice>{error}</Notice>}{activation && <button className="text-button auth-secondary" onClick={() => navigate('/login')}>Quay lại đăng nhập</button>}</section></div></main>
-}
 function RoutedPage() {
   const { user, ready, can } = useAdmin()
   const path = useLocation().pathname.replace(/\/+$/, '') || '/'
-  if (path === '/activate') return <AuthPage activation />
+  if (path === '/activate') return <AuthPage key="activate" activation />
+  if (path === '/reset-password') return <AuthPage key="reset-password" reset />
   if (!ready) return <Empty text="Đang kiểm tra phiên đăng nhập…" />
   if (!user) return path === '/login' ? <AuthPage /> : <Navigate to="/login" replace />
   if (path === '/login') return <Navigate to="/" replace />

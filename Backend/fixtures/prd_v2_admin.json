@@ -1,0 +1,30 @@
+{
+  "instructions": "Create the zone, substitute its returned zone_id into create_poi, then use the returned content_version in If-Match for each POI mutation. Use a real authenticated Admin session and allowed Origin. All data is synthetic.",
+  "create_zone": {
+    "name": "Sample visitor zone",
+    "map_region": {"bbox": [106.68, 10.76, 106.72, 10.80], "min_zoom": 11, "max_zoom": 16},
+    "boundary": [[106.68, 10.76], [106.72, 10.76], [106.72, 10.80], [106.68, 10.80], [106.68, 10.76]],
+    "is_active": true
+  },
+  "create_poi": {
+    "zone_id": "REPLACE_WITH_CREATED_ZONE_ID",
+    "category": "heritage",
+    "location": {"lat": 10.7726, "lng": 106.698},
+    "priority": 1,
+    "content": {"en": {"name": "Sample heritage site", "description": "Short display description.", "introduction": "Longer introduction shown on the detail screen.", "text": "Welcome to this sample heritage site."}}
+  },
+  "partial_poi_update": {"priority": 2},
+  "partial_english_update": {"text": "An updated English narration."},
+  "partial_zone_update": {"name": "Renamed visitor zone"},
+  "partial_language_update": {"display_order": 0},
+  "global_geofence_update": {"radius_m": 45},
+  "offline_build": {"zone_id": "REPLACE_WITH_CREATED_ZONE_ID", "locales": ["en", "vi"]},
+  "expected_errors": {
+    "missing_english": "422",
+    "outside_zone": "422 OUTSIDE_ZONE",
+    "missing_If_Match": "428 VERSION_REQUIRED",
+    "stale_If_Match": "409 VERSION_CONFLICT",
+    "regenerate_QR": "409 IMMUTABLE_QR",
+    "missing_public_app_url": "503 QR_BASE_URL_NOT_CONFIGURED"
+  }
+}

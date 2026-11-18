@@ -26,8 +26,8 @@ def seed_admin(reset_password=False):
             if user and (user["role_id"] not in {"local_admin", "super_admin"} or user["email"].lower() != email.lower()):
                 raise RuntimeError("Seed account identity or role conflicts; no account was changed.")
             if not user or reset_password:
-                if len(password) < 8 or len(password.encode()) > 72 or password == "replace_with_a_unique_password":
-                    raise RuntimeError("ADMIN_PASSWORD must contain at least 8 characters and at most 72 UTF-8 bytes.")
+                if len(password) < 8 or len(password.encode()) > 72 or not any(char.isalpha() for char in password) or not any(char.isdigit() for char in password) or password == "replace_with_a_unique_password":
+                    raise RuntimeError("ADMIN_PASSWORD must contain at least 8 characters, letters and digits, and at most 72 UTF-8 bytes.")
                 hashed = password_hash(password)
             if not user:
                 user_id = identifier("user")

@@ -13,7 +13,7 @@ from app.core.security import require
 from app.core.state import mutation_lock
 from app.core.utils import audit, fail, identifier, now, public, update_record
 from app.db.connection import database
-from app.modules.media.storage import AUDIO_LIMIT, checked_mp3, store_bytes
+from app.modules.audio.storage import AUDIO_LIMIT, checked_mp3, store_audio_bytes
 from app.modules.pois.routes import editable_poi
 from app.schemas.base import Input
 
@@ -38,7 +38,7 @@ def query(statement, parameters=(), one=False):
 
 
 def task_record(task_id):
-    record = query("SELECT * FROM audio_tasks WHERE id=%s", (task_id,), one=True)
+    record = query("SELECT audio_tasks.*, users.full_name AS created_by_name, users.email AS created_by_email FROM audio_tasks LEFT JOIN users ON users.id=audio_tasks.created_by WHERE audio_tasks.id=%s", (task_id,), one=True)
     if not record:
         fail(404, "NOT_FOUND", "Audio task not found.")
     return record
@@ -64,7 +64,7 @@ def text_hash(content):
 
 def execute_task(task_id, user):
     try:
-        with mutation_lock:
+        with mutation_lock, database.transaction():
             task = task_record(task_id)
             if task["state"] != "QUEUED":
                 return
@@ -74,6 +74,12 @@ def execute_task(task_id, user):
             options = json.loads(task["options"]) if isinstance(task["options"], str) else task["options"]
             if not content.get("text"):
                 raise ValueError("Content is missing.")
+            if not database.fetch_one("languages", {"_id": locale, "is_active": True}):
+                raise ValueError("Language is no longer active.")
+            if text_hash(content) != options["text_hash"] or content.get("audio_sha256") != options.get("audio_sha256"):
+                raise ValueError("Content or audio changed during generation. Generate again.")
+            if content.get("audio_source") == "UPLOADED" and not options.get("replace_uploaded_audio"):
+                raise ValueError("Uploaded audio is protected.")
             query("UPDATE audio_tasks SET state='PROCESSING',progress=15,started_at=UTC_TIMESTAMP(3) WHERE id=%s", (task_id,))
         headers = {"Content-Type": "application/json", "Accept": "audio/mpeg"}
         if settings.get("TTS_API_KEY"):
@@ -81,7 +87,7 @@ def execute_task(task_id, user):
         request = urllib.request.Request(configured(), data=json.dumps({"text": content["text"], "language": locale}).encode(), headers=headers, method="POST")
         with urllib.request.build_opener(NoRedirect).open(request, timeout=60) as response:
             data = checked_mp3(response.read(AUDIO_LIMIT + 1))
-        with mutation_lock:
+        with mutation_lock, database.transaction():
             if task_record(task_id)["state"] != "PROCESSING":
                 return
             latest = editable_poi(task["poi_id"])
@@ -92,7 +98,7 @@ def execute_task(task_id, user):
                 raise ValueError("Content or audio changed during generation. Generate again.")
             if current.get("audio_source") == "UPLOADED" and not options.get("replace_uploaded_audio"):
                 raise ValueError("Uploaded audio is protected.")
-            url, checksum = store_bytes(data, "mp3")
+            url, checksum = store_audio_bytes(data)
             update_record("pois", task["poi_id"], {"content." + locale: {**current, "audio_url": url, "audio_sha256": checksum, "audio_source": "TTS", "updated_at": now()}, "last_modified_by": user["user_id"]}, user, "audio.completed")
             query("UPDATE audio_tasks SET state='COMPLETED',progress=100,error=NULL,finished_at=UTC_TIMESTAMP(3) WHERE id=%s", (task_id,))
     except Exception as error:
@@ -103,7 +109,7 @@ def execute_task(task_id, user):
 
 @router.get("/admin/audio-tasks")
 def tasks(page: int = Query(1, ge=1), page_size: int = Query(100, ge=1, le=100), user=Depends(require("audio.view_tasks"))):
-    items = query("SELECT * FROM audio_tasks ORDER BY created_at DESC LIMIT %s OFFSET %s", (page_size, (page - 1) * page_size))
+    items = query("SELECT audio_tasks.*, users.full_name AS created_by_name, users.email AS created_by_email FROM audio_tasks LEFT JOIN users ON users.id=audio_tasks.created_by ORDER BY audio_tasks.created_at DESC LIMIT %s OFFSET %s", (page_size, (page - 1) * page_size))
     total = query("SELECT COUNT(*) AS total FROM audio_tasks", one=True)["total"]
     return {"items": [task_public(item) for item in items], "total": total}
 
@@ -114,7 +120,7 @@ def regenerate(poi_id: str, body: Regenerate, background: BackgroundTasks, user=
     if body.retranslate:
         fail(422, "TRANSLATION_UNAVAILABLE", "Save the translated script first; this provider generates speech only.")
     created, skipped = [], []
-    with mutation_lock:
+    with mutation_lock, database.transaction():
         poi = editable_poi(poi_id)
         for locale in dict.fromkeys(body.locales):
             content = poi.get("content", {}).get(locale, {})
@@ -139,7 +145,7 @@ def regenerate(poi_id: str, body: Regenerate, background: BackgroundTasks, user=
 
 @router.post("/admin/audio-tasks/{task_id}/cancel")
 def cancel(task_id: str, user=Depends(require("audio.cancel_task"))):
-    with mutation_lock:
+    with mutation_lock, database.transaction():
         task = task_record(task_id)
         if task["state"] not in {"QUEUED", "PROCESSING"}:
             fail(409, "INVALID_STATE", "Only active tasks may be cancelled.")
@@ -151,7 +157,7 @@ def cancel(task_id: str, user=Depends(require("audio.cancel_task"))):
 @router.post("/admin/audio-tasks/{task_id}/retry")
 def retry(task_id: str, background: BackgroundTasks, user=Depends(require("audio.retry_task"))):
     configured()
-    with mutation_lock:
+    with mutation_lock, database.transaction():
         task = task_record(task_id)
         if task["state"] not in {"FAILED", "CANCELLED"}:
             fail(409, "INVALID_STATE", "Only failed or cancelled tasks may be retried.")
@@ -160,6 +166,10 @@ def retry(task_id: str, background: BackgroundTasks, user=Depends(require("audio
         if not content.get("text"):
             fail(422, "MISSING_CONTENT", "Save a script first.")
         options = json.loads(task["options"]) if isinstance(task["options"], str) else task["options"]
+        if not database.fetch_one("languages", {"_id": task["language_code"], "is_active": True}):
+            fail(422, "INVALID_LANGUAGE", "Save content for an active language first.")
+        if content.get("audio_source") == "UPLOADED" and not options.get("replace_uploaded_audio"):
+            fail(409, "UPLOADED_AUDIO_PROTECTED", "Uploaded audio is protected.")
         options.update(text_hash=text_hash(content), audio_sha256=content.get("audio_sha256"))
         try:
             query("UPDATE audio_tasks SET state='QUEUED',progress=0,error=NULL,started_at=NULL,finished_at=NULL,retry_count=retry_count+1,options=%s WHERE id=%s", (json.dumps(options), task_id))

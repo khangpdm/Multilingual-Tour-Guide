@@ -5,7 +5,7 @@ import { permissions, type Capabilities, type Account, type AudioTask, type Audi
 export const stamp = () => new Date().toISOString()
 export const uid = (prefix: string) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`
 export const dateLabel = (value?: string | null) => value ? new Date(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—'
-export const poiName = (poi?: Poi) => poi?.content.vi?.name || 'Chưa có tên'
+export const poiName = (poi?: Poi) => poi?.content.en?.name || poi?.content.vi?.name || 'Chưa có tên'
 export const emptyContent = (): Content => ({ name: '', address: '', description: '', introduction: '', text: '', audio_url: null, audio_sha256: null, audio_source: null, is_edited: false, updated_at: stamp() })
 export const activeTask = (task: AudioTask) => ['queued', 'processing'].includes(task.status)
 export function enqueue(data: Data, poi: Poi, locales: string[], actor: string, replace = false, retranslate = false): Data {
@@ -25,7 +25,7 @@ function seed(): Data {
   return {
     languages: [{ code: 'vi', name: 'Vietnamese', native_name: 'Tiếng Việt', is_active: true, is_default: true, display_order: 1 }, { code: 'en', name: 'English', native_name: 'English', is_active: true, is_default: false, display_order: 2 }],
     zones: [{ zone_id: 'zone_quan_1', name: 'Quận 1', map_region: { bbox: [106.68, 10.76, 106.72, 10.80], min_zoom: 11, max_zoom: 16 }, is_active: true }],
-    pois: [{ poi_id: 'poi_0042', zone_id: 'zone_quan_1', category: 'landmark', location: { lat: 10.7726, lng: 106.698 }, geofence_radius_m: 30, qr_code: null, status: 'published', images: [], content: { vi: { ...emptyContent(), name: 'Chợ Bến Thành', text: 'Chợ Bến Thành là biểu tượng văn hóa và lịch sử của Thành phố Hồ Chí Minh.', audio_source: 'TTS' } }, last_modified_by: 'user_demo', created_at, updated_at: created_at }],
+    pois: [{ poi_id: 'poi_0042', zone_id: 'zone_quan_1', category: 'heritage', location: { lat: 10.7726, lng: 106.698 }, geofence_radius_m: 30, qr_code: 'sample_stable_qr_token', status: 'active', content_version: 1, images: [], content: { en: { ...emptyContent(), name: 'Ben Thanh Market', text: 'A sample English narration.', audio_source: 'TTS' }, vi: { ...emptyContent(), name: 'Chợ Bến Thành', text: 'Chợ Bến Thành là biểu tượng văn hóa và lịch sử của Thành phố Hồ Chí Minh.', audio_source: 'TTS' } }, last_modified_by: 'user_demo', created_at, updated_at: created_at }],
     accounts: [{ user_id: 'user_demo', email: 'admin@example.test', full_name: 'Quản trị viên demo', role_id: 'super_admin', status: 'active', created_at }],
     roles: [
       { role_id: 'super_admin', name: 'Super Admin', level: 3, permissions: [...permissions], is_system: true },
@@ -35,8 +35,9 @@ function seed(): Data {
     ], tasks: [], audit: [],
   }
 }
-type Mutation = { permission: Permission; path: string; method?: string; body?: unknown; action: string; target: string; before?: unknown; after?: unknown; demo: (data: Data) => Data }
-type Store = { capabilities: Capabilities; localDatabase: boolean; tableCounts: Record<string, number>; data: Data; user: Account | null; mode: 'live' | 'demo'; ready: boolean; busy: boolean; error: string; streamStatus: string; can: (permission: Permission) => boolean; level: number; login: (username: string, password: string) => Promise<void>; logout: () => Promise<void>; enterDemo: () => void; switchRole: (role: string) => void; reload: () => Promise<void>; mutate: <T = unknown>(mutation: Mutation) => Promise<T | undefined> }
+type Mutation = { permission: Permission; path: string; method?: string; body?: unknown; version?: number; action: string; target: string; before?: unknown; after?: unknown; demo: (data: Data) => Data }
+export type MfaChallenge = { mfa_required: true; challenge_token: string; expires_in: number }
+type Store = { capabilities: Capabilities; localDatabase: boolean; tableCounts: Record<string, number>; data: Data; user: Account | null; mode: 'live' | 'demo'; ready: boolean; busy: boolean; error: string; streamStatus: string; can: (permission: Permission) => boolean; level: number; login: (email: string, password: string) => Promise<MfaChallenge | null>; verifyMfa: (challengeToken: string, code: string) => Promise<void>; logout: () => Promise<void>; enterDemo: () => void; switchRole: (role: string) => void; reload: () => Promise<void>; mutate: <T = unknown>(mutation: Mutation) => Promise<T | undefined> }
 const Context = createContext<Store | null>(null)
 export function AdminProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<Data>(emptyData)
@@ -109,7 +110,17 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     return () => { closed = true; window.clearInterval(timer) }
   }, [mode, session])
   async function reload() { if (mode === 'live' && session) { setBusy(true); try { const current = await api<Session>('/admin/me/permissions'); setSession(current); await loadLive(current); setError('') } catch (reason) { setError((reason as Error).message) } finally { setBusy(false) } } }
-  async function login(username: string, password: string) { const current = await api<Session>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }); setMode('live'); setSession(current); setError(''); try { await loadLive(current) } catch (reason) { setError((reason as Error).message) } }
+  async function acceptSession(current: Session) { generation.current++; setMode('live'); setSession(current); setError(''); try { await loadLive(current) } catch (reason) { setError((reason as Error).message) } }
+  async function login(email: string, password: string): Promise<MfaChallenge | null> {
+    const current = await api<Session | MfaChallenge>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
+    if ('mfa_required' in current) return current
+    await acceptSession(current)
+    return null
+  }
+  async function verifyMfa(challengeToken: string, code: string) {
+    const current = await api<Session>('/auth/mfa/verify', { method: 'POST', body: JSON.stringify({ challenge_token: challengeToken, code }) })
+    await acceptSession(current)
+  }
   async function logout() { if (mode === 'live') await api('/auth/logout', { method: 'POST' }); generation.current++; setSession(null); setData(emptyData); setTableCounts({}); setMode('live'); setError('') }
   function enterDemo() {
     generation.current++
@@ -124,7 +135,9 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     mutationLock.current = true; setBusy(true); setError('')
     try {
       if (mode === 'live') {
-        const result = await api<T>(mutation.path, { method: mutation.method || 'POST', body: mutation.body instanceof FormData ? mutation.body : mutation.body === undefined ? undefined : JSON.stringify(mutation.body) })
+        const poiId = mutation.path.match(/^\/admin\/pois\/([^/]+)/)?.[1]
+        const version = mutation.version ?? data.pois.find(poi => poi.poi_id === poiId)?.content_version
+        const result = await api<T>(mutation.path, { method: mutation.method || 'POST', headers: version ? { 'If-Match': String(version) } : undefined, body: mutation.body instanceof FormData ? mutation.body : mutation.body === undefined ? undefined : JSON.stringify(mutation.body) })
         try { const current = await api<Session>('/admin/me/permissions'); setSession(current); await loadLive(current) } catch (reason) { setError(`Đã lưu, nhưng chưa tải lại được dữ liệu: ${(reason as Error).message}`) }
         return result
       }
@@ -135,10 +148,15 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       const roleId = updatedUser.role_id
       const role = next.roles.find(item => item.role_id === roleId)
       if (role) setSession({ ...session, user: { ...session.user, role_id: roleId }, permissions: role.permissions })
+    } catch (reason) {
+      if (mode === 'live' && reason instanceof ApiError && reason.status === 409) {
+        try { await loadLive(session) } catch { setError('Không tải được bản mới. Vui lòng thử tải lại.') }
+      }
+      throw reason
     } finally { mutationLock.current = false; setBusy(false) }
   }
   const levels: Record<string, number> = { super_admin: 3, admin: 2, poi_manager: 1 }
   const level = data.roles.find(role => role.role_id === session?.user.role_id)?.level ?? levels[session?.user.role_id ?? ''] ?? 0
-  return <Context.Provider value={{ capabilities: session?.capabilities || {}, localDatabase: mode === 'live' && session?.capabilities?.local_database === true, tableCounts, data, user: session?.user ?? null, mode, ready, busy, error, streamStatus, can, level, login, logout, enterDemo, switchRole, reload, mutate }}>{children}</Context.Provider>
+  return <Context.Provider value={{ capabilities: session?.capabilities || {}, localDatabase: mode === 'live' && session?.capabilities?.local_database === true, tableCounts, data, user: session?.user ?? null, mode, ready, busy, error, streamStatus, can, level, login, verifyMfa, logout, enterDemo, switchRole, reload, mutate }}>{children}</Context.Provider>
 }
 export function useAdmin() { const context = useContext(Context); if (!context) throw new Error('AdminProvider is required'); return context }

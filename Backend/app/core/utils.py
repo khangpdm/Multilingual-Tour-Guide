@@ -34,13 +34,32 @@ def get_record(collection, record_id):
     return document
 
 
+def audit_data(value):
+    if isinstance(value, dict):
+        sanitized = {}
+        for key, item in value.items():
+            normalized = str(key).lower().replace("-", "_")
+            if normalized in {"authorization", "cookie", "set_cookie", "activation_path", "credential", "credentials"} or any(part in normalized for part in ("password", "secret", "token", "api_key", "apikey")):
+                continue
+            sanitized[key] = audit_data(item)
+        return sanitized
+    if isinstance(value, (list, tuple)):
+        return [audit_data(item) for item in value]
+    return value
+
 def audit(user, action, target, before, after):
-    database.insert_record("audit_logs", {"_id": identifier("audit"), "log_id": identifier("audit"), "actor_user_id": user["user_id"], "actor_email": user["email"], "action": action, "target_id": target, "before": public(before) if before else None, "after": public(after) if after else None, "timestamp": now()})
+    database.insert_record("audit_logs", {"_id": identifier("audit"), "log_id": identifier("audit"), "actor_user_id": user["user_id"], "actor_email": user["email"], "action": action, "target_id": target, "before": public(audit_data(before)) if before is not None else None, "after": public(audit_data(after)) if after is not None else None, "timestamp": now()})
 
 
 def update_record(collection, record_id, changes, user, action):
-    before = get_record(collection, record_id)
-    changes["updated_at"] = now()
-    after = database.update_record(collection, record_id, changes)
-    audit(user, action, record_id, before, after)
-    return after
+    with database.transaction():
+        if collection == "pois":
+            database.lock_poi(record_id)
+        before = get_record(collection, record_id)
+        changes = {**changes, "updated_at": now()}
+        if collection == "pois":
+            database.save_snapshot(before, user["user_id"])
+            changes["content_version"] = before["content_version"] + 1
+        after = database.update_record(collection, record_id, changes)
+        audit(user, action, record_id, before, after)
+        return after

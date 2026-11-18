@@ -34,7 +34,7 @@ class UserEdit(Input):
 class Activation(Input):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=False)
     token: str = Field(min_length=32, max_length=128)
-    password: str = Field(min_length=10, max_length=72)
+    password: str = Field(min_length=8, max_length=72)
     full_name: str = Field(min_length=1, max_length=255)
 
     @field_validator("password", mode="before")

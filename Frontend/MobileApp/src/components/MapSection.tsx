@@ -10,16 +10,13 @@ import Mapbox, {
   UserLocation,
 } from '@rnmapbox/maps';
 
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import pin from '../../assets/images/pin.png';
 import { IconTarget } from './Icons';
 
-const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
-
-if (MAPBOX_TOKEN) {
-  Mapbox.setAccessToken(MAPBOX_TOKEN);
-}
+const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN?.trim();
+const HAS_MAPBOX_TOKEN = Boolean(MAPBOX_TOKEN?.startsWith('pk.'));
 
 interface MapsectionProps {
   onMapTouch?: () => void;
@@ -27,6 +24,8 @@ interface MapsectionProps {
 
 const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
   const cameraRef = useRef<Camera>(null);
+  const [mapReady, setMapReady] = useState(false);
+  const [mapFailed, setMapFailed] = useState(false);
 
   const {
     language,
@@ -41,8 +40,23 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
   } = useApp();
 
   useEffect(() => {
-    Mapbox.requestAndroidLocationPermissions();
+    if (!HAS_MAPBOX_TOKEN) return;
+    let active = true;
+    Mapbox.setAccessToken(MAPBOX_TOKEN!)
+      .then(() => {
+        if (active) setMapReady(true);
+      })
+      .catch(() => {
+        if (active) setMapFailed(true);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
+
+  useEffect(() => {
+    if (mapReady) Mapbox.requestAndroidLocationPermissions();
+  }, [mapReady]);
 
   const poiGeoJSON = useMemo<GeoJSON.FeatureCollection>(() => {
     const filteredPois =
@@ -123,11 +137,35 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
     }
   };
 
+  if (!mapReady) {
+    const unavailable = !HAS_MAPBOX_TOKEN || mapFailed;
+    return (
+      <View className="flex-1 w-full h-full items-center justify-center bg-slate-100 px-8">
+        <Text className="text-center text-lg font-bold text-slate-700">
+          {language === 'vi'
+            ? unavailable
+              ? 'Bản đồ chưa sẵn sàng'
+              : 'Đang tải bản đồ...'
+            : unavailable
+              ? 'Map unavailable'
+              : 'Loading map...'}
+        </Text>
+        {unavailable && (
+          <Text className="mt-3 text-center text-sm text-slate-500">
+            {language === 'vi'
+              ? 'Bạn vẫn có thể xem địa điểm, quét QR và nghe thuyết minh. Bản đồ cần được cấu hình trước khi sử dụng.'
+              : 'You can still browse places, scan QR codes and listen to narration. The map needs to be configured before use.'}
+          </Text>
+        )}
+      </View>
+    );
+  }
+
   return (
     <View className="relative flex-1 w-full h-full">
       <MapView
         style={{ flex: 1 }}
-        styleURL="mapbox://styles/phamdangminhkhang/cmummdaw2002s01r1a6lqc2en"
+        styleURL={Mapbox.StyleURL.Street}
         logoEnabled={false}
         attributionEnabled={false}
         scaleBarEnabled={false}

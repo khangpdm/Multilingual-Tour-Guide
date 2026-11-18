@@ -4,12 +4,14 @@ import SearchPOI from '@/components/SearchPOI';
 import { haversineDistance } from '@/data/pois';
 import { useApp } from '@/store/AppContext';
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Text, TouchableOpacity, View } from 'react-native';
 import LanguageModal from './components/LanguageModal';
 import NearbyPOI from './components/NearbyPOI';
 import PreviewPOI from './components/PreviewPOI';
 
 export default function HomeScreen() {
+  const { t } = useTranslation();
   const {
     pois,
     supportedLanguages,
@@ -24,6 +26,8 @@ export default function HomeScreen() {
     userLng,
     activationRadius,
     startPlayback,
+    poiLoadError,
+    reloadPOIs,
   } = useApp();
 
   const [searchOpen, setSearchOpen] = useState(false);
@@ -82,6 +86,18 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
+      {poiLoadError && (
+        <View className="bg-orange-50 px-4 py-3">
+          <Text className="text-sm text-orange-900">
+            {t('connection.unavailable', {
+              defaultValue: 'Không kết nối được backend. Kiểm tra địa chỉ API và kết nối mạng.',
+            })}
+          </Text>
+          <TouchableOpacity onPress={reloadPOIs} accessibilityRole="button">
+            <Text className="mt-2 font-semibold text-teal-700">{t('qr.retry')}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       <LanguageModal
         visible={langModalVisible}
         onClose={() => setLangModalVisible(false)}

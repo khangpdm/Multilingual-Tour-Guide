@@ -25,6 +25,25 @@ In the output, you'll find options to open the app in a
 
 You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 
+## Android development on Windows
+
+Keep the Android emulator running, start the backend separately, then run:
+
+```powershell
+npm run android:windows
+```
+
+This command discovers the SDK from `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or
+`%LOCALAPPDATA%\Android\Sdk`, applies Expo config plugins, and builds/installs
+the development app. It does not modify global environment variables.
+The Android emulator API defaults to `http://10.0.2.2:8000`; set
+`EXPO_PUBLIC_API_URL` if testing a different backend.
+
+The Windows C++ driver plugin explicitly enables `--driver-mode=g++` for native
+CMake builds. This preserves C++ runtime linkage when CMake shortens a compiler
+path containing spaces to `CLANG_~1.EXE`. No dependency downgrade or manual
+editing of generated Android files is required. Other build hosts are unchanged.
+
 ## Get a fresh project
 
 When you're ready, run:

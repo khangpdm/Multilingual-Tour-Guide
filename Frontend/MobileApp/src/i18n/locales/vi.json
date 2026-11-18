@@ -1,4 +1,20 @@
 {
+  "connection": {
+    "unavailable": "Không kết nối được backend. Kiểm tra địa chỉ API và mạng; nếu đã tải gói, ứng dụng sẽ dùng nội dung offline."
+  },
+  "offline": {
+    "download": "Tải về",
+    "refresh": "Tải lại danh sách",
+    "wifiRequired": "Hãy kết nối Wi-Fi hoặc tắt tùy chọn chỉ tải qua Wi-Fi trong Cài đặt.",
+    "removeTitle": "Xóa gói đã tải trên thiết bị?",
+    "explanation": "Gói tải gồm ảnh, nội dung và MP3, luôn kèm tiếng Anh dự phòng. Chưa bao gồm bản đồ nền offline.",
+    "published": "Phiên bản Admin đã phát hành",
+    "failed": "Không tải được gói hoặc bộ nhớ không khả dụng. Gói đã cài trước đó vẫn được giữ. Kiểm tra kết nối rồi thử lại.",
+    "nativeOnly": "Tải và nghe offline dùng trên ứng dụng Android/iOS, không hỗ trợ ở bản xem trước web.",
+    "empty": "Chưa có gói đang phát hành.",
+    "ready": "Đã lưu trên thiết bị",
+    "saved": "{{count}} gói đã lưu · {{size}} MB"
+  },
   "common": {
     "home": "Trang chủ",
     "explore": "Khám phá",

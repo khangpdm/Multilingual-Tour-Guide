@@ -1,4 +1,4 @@
-import { httpGet } from './httpClient';
+import { assetUrl, httpGet } from './httpClient';
 
 export interface POI {
   id: string;
@@ -11,73 +11,99 @@ export interface POI {
   lng: number;
   coverImage: string;
   mapLink?: string;
+  zoneId?: string;
+  qrCode?: string;
+  audioUrls?: Record<string, string>;
 }
 
-export async function fetchPOIs(): Promise<POI[]> {
-  try {
-    const data = await httpGet<any>('/poi/load-all');
-
-    const rawPois = data.updated_pois || data.pois || [];
-
-    return rawPois.map((item: any) => {
-      const nameMap: Record<string, string> = {};
-      const descMap: Record<string, string> = {};
-      const addressMap: Record<string, string | null> = {};
-
-      if (item.content) {
-        Object.keys(item.content).forEach((lang) => {
-          nameMap[lang] = item.content[lang].name;
-          descMap[lang] = item.content[lang].text;
-          addressMap[lang] = item.content[lang].address || null;
-        });
-      }
-
-      return {
-        id: item.poi_id,
-        name: nameMap,
-        description: descMap,
-        ttsScript: descMap,
-        category: normalizeCategory(item.category),
-        address: addressMap,
-        lat: item.location?.lat || 0,
-        lng: item.location?.lng || 0,
-        coverImage:
-          item.images?.[0] || 'https://images.unsplash.com/photo-1583417319070-4a69db38a482',
-      };
-    });
-  } catch (error) {
-    console.warn('[PoiService] Không thể tải POI từ server, dùng dữ liệu local:', error);
-    return [];
-  }
+export interface PublicPOI {
+  poi_id: string;
+  zone_id: string;
+  qr_code?: string;
+  category: string;
+  location: { lat: number; lng: number };
+  images: string[];
+  cover_image?: string | null;
+  content: Record<
+    string,
+    {
+      name?: string;
+      text?: string;
+      description?: string | null;
+      introduction?: string | null;
+      address?: string | null;
+      audio_url?: string | null;
+    }
+  >;
 }
 
 const CATEGORY_ALIASES: Record<string, string> = {
-  'Di tích': 'landmark',
+  heritage: 'landmark',
   historical_site: 'landmark',
   landmark: 'landmark',
-  'Bảo tàng': 'museum',
   museum: 'museum',
-  'Tôn giáo': 'religious',
+  religion: 'religious',
   religious: 'religious',
-  'Kiến trúc': 'architecture',
   architecture: 'architecture',
-  'Công viên': 'park',
   park: 'park',
-  'Ẩm thực': 'food',
   food: 'food',
 };
 
-function normalizeCategory(value?: string): string {
-  return CATEGORY_ALIASES[value || ''] || 'landmark';
+export function mapPOI(item: PublicPOI): POI {
+  const names: Record<string, string> = {};
+  const descriptions: Record<string, string> = {};
+  const scripts: Record<string, string> = {};
+  const addresses: Record<string, string | null> = {};
+  const audioUrls: Record<string, string> = {};
+  for (const [locale, content] of Object.entries(item.content)) {
+    names[locale] = content.name || item.content.en?.name || '';
+    descriptions[locale] = content.introduction || content.description || content.text || '';
+    scripts[locale] = content.text || '';
+    addresses[locale] = content.address || null;
+    audioUrls[locale] = assetUrl(content.audio_url);
+  }
+  return {
+    id: item.poi_id,
+    zoneId: item.zone_id,
+    qrCode: item.qr_code,
+    name: names,
+    description: descriptions,
+    ttsScript: scripts,
+    address: addresses,
+    audioUrls,
+    category: CATEGORY_ALIASES[item.category] || 'landmark',
+    lat: item.location.lat,
+    lng: item.location.lng,
+    coverImage: assetUrl(item.cover_image || item.images[0]),
+  };
 }
 
-export async function fetchPOIDetail(poiId: string): Promise<POI | null> {
+export async function fetchPOIs(): Promise<POI[]> {
+  const data = await httpGet<{ updated_pois: PublicPOI[] }>('/poi/load-all');
+  return data.updated_pois.map(mapPOI);
+}
+
+export async function fetchPOIDetail(poiId: string): Promise<POI> {
+  const data = await httpGet<{ poi: PublicPOI }>(`/poi/${encodeURIComponent(poiId)}`);
+  return mapPOI(data.poi);
+}
+
+export function qrToken(value: string): string | null {
+  const raw = value.trim();
+  if (/^[A-Za-z0-9_-]{16,128}$/.test(raw)) return raw;
   try {
-    const data = await httpGet<{ poi?: POI }>(`/pois/${poiId}`);
-    const poi = data.poi;
-    return poi ? { ...poi, category: normalizeCategory(poi.category) } : null;
-  } catch (error) {
-    console.warn(`[PoiService] Không thể tải chi tiết POI ${poiId}:`, error);
+    const url = new URL(raw);
+    if (!['http:', 'https:'].includes(url.protocol)) return null;
+    const match = url.pathname.match(/^\/q\/([A-Za-z0-9_-]{16,128})\/?$/);
+    return match?.[1] || null;
+  } catch {
     return null;
   }
+}
+
+export async function fetchPOIByQR(token: string, language: string): Promise<POI> {
+  const data = await httpGet<{ poi: PublicPOI }>(
+    `/poi/by-qr/${encodeURIComponent(token)}?lang=${encodeURIComponent(language)}`
+  );
+  return mapPOI(data.poi);
 }

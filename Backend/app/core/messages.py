@@ -35,6 +35,11 @@ MESSAGES = {
     "Bcrypt passwords must not exceed 72 UTF-8 bytes.": "Mật khẩu vượt quá giới hạn 72 byte UTF-8.",
     "Invalid map bounds or zoom range.": "Phạm vi bản đồ hoặc mức thu phóng không hợp lệ.",
     "Use an ISO date with timezone.": "Vui lòng nhập thời gian đúng định dạng ISO và có múi giờ.",
+    "The start date must not be after the end date.": "Thời gian bắt đầu không được sau thời gian kết thúc.",
+    "Source resources changed. Build a new version.": "Tài nguyên nguồn đã thay đổi. Vui lòng tạo phiên bản gói mới.",
+    "Pack is damaged. Build a new version.": "Gói dữ liệu bị hỏng. Vui lòng tạo phiên bản mới.",
+    "Pack manifest is missing. Build a new version.": "Gói dữ liệu thiếu manifest. Vui lòng tạo phiên bản mới.",
+    "Pack manifest does not match this release.": "Manifest không khớp với phiên bản gói dữ liệu này.",
     "Vietnamese content and valid locale codes are required.": "Cần có nội dung tiếng Việt và mã ngôn ngữ hợp lệ.",
     "Zone name already exists.": "Tên khu vực đã tồn tại.",
     "Language already exists.": "Ngôn ngữ đã tồn tại.",
@@ -114,6 +119,7 @@ def localize_messages(value):
 
 
 FIELD_LABELS = {
+    "confirmation": "Xác nhận mật khẩu", "challenge_token": "Phiên xác thực OTP", "token": "Liên kết xác thực",
     "username": "Tên đăng nhập", "password": "Mật khẩu", "email": "Email",
     "name": "Tên", "full_name": "Họ và tên", "description": "Mô tả ngắn", "introduction": "Bài giới thiệu",
     "text": "Kịch bản thuyết minh", "address": "Địa chỉ", "category": "Danh mục", "zone_id": "Khu vực",
