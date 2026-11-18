@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react'
-import { FileAudio, FileText, Globe, Layers, MapPin, QrCode, Radio, Smartphone } from 'lucide-react'
+import { FileAudio, FileText, Globe, Layers, MapPin, QrCode, Smartphone } from 'lucide-react'
 import { api } from '../../admin/api'
 import { useAdmin } from '../../admin/store'
 import './statistics.css'
@@ -23,31 +23,33 @@ function Progress({ label, value, total, color }: { label: string; value: number
 }
 
 export function Statistics() {
-  const { data, can, busy, tableCounts } = useAdmin()
+  const { data, can, busy, mode } = useAdmin()
   const [months, setMonths] = useState(6)
   const chartId = useId().replace(/:/g, '')
   const viewPois = can('poi.view')
   const viewAudio = can('audio.view_tasks')
-  const [activeDevices, setActiveDevices] = useState<number | null>(null)
-  const [presenceError, setPresenceError] = useState(false)
+  const [uniqueDevices, setUniqueDevices] = useState<number | null>(null)
+  const [uniqueDevicesError, setUniqueDevicesError] = useState(false)
   useEffect(() => {
-    if (!viewPois) return
+    setUniqueDevices(null)
+    setUniqueDevicesError(false)
+    if (!viewPois || mode !== 'live') return
     let disposed = false
     let pending = false
     const refresh = async () => {
       if (pending) return
       pending = true
       try {
-        const result = await api<{ active_devices: number }>('/admin/mobile/active-devices')
-        if (!disposed) { setActiveDevices(result.active_devices); setPresenceError(false) }
+        const result = await api<{ unique_devices: number }>('/admin/analytics/summary')
+        if (!disposed) { setUniqueDevices(result.unique_devices); setUniqueDevicesError(false) }
       } catch {
-        if (!disposed) { setActiveDevices(null); setPresenceError(true) }
+        if (!disposed) { setUniqueDevices(null); setUniqueDevicesError(true) }
       } finally { pending = false }
     }
     void refresh()
     const timer = window.setInterval(() => void refresh(), 15000)
     return () => { disposed = true; window.clearInterval(timer) }
-  }, [viewPois])
+  }, [viewPois, mode])
   const activeLanguages = data.languages.filter(language => language.is_active)
   const pois = data.pois.filter(poi => poi.status !== 'archived')
   const published = pois.filter(poi => poi.status === 'active')
@@ -67,13 +69,12 @@ export function Statistics() {
   const monthAudio = data.tasks.filter(task => task.status === 'completed' && monthKey(task.finished_at) === thisMonth).length
   const cards = [
     { label: 'Tổng địa điểm', value: data.pois.length, note: `${newPois} địa điểm tạo trong tháng`, icon: MapPin, tone: 'peach', visible: viewPois },
-    { label: 'Sự kiện analytics', value: tableCounts.analytics_events ?? 0, note: 'Số dòng trong bảng analytics_events', icon: Radio, tone: 'mint', visible: viewPois },
+    { label: 'Thiết bị đang hoạt động', value: uniqueDevices, note: mode === 'demo' ? 'Không có dữ liệu thiết bị trong demo' : uniqueDevicesError ? 'Không thể tải số thiết bị' : 'Số thiết bị duy nhất đã ghi nhận', icon: Smartphone, tone: 'mint', visible: viewPois },
     { label: 'Khu vực hoạt động', value: data.zones.filter(zone => zone.is_active).length, note: `${data.zones.length} khu vực trong hệ thống`, icon: Layers, tone: 'lilac', visible: viewPois },
     { label: 'Ngôn ngữ đang bật', value: activeLanguages.length, note: `${data.languages.length} ngôn ngữ đã cấu hình`, icon: Globe, tone: 'sand', visible: viewPois },
     { label: 'Kịch bản thuyết minh', value: textCount, note: 'Trên ngôn ngữ đang bật', icon: FileText, tone: 'blue', visible: viewPois },
     { label: 'Bản nội dung có audio', value: audioCount, note: 'Không tính địa điểm lưu trữ', icon: FileAudio, tone: 'pink', visible: viewPois },
     { label: 'Địa điểm có mã QR', value: withQr, note: `Trên ${pois.length} địa điểm chưa lưu trữ`, icon: QrCode, tone: 'mint', visible: viewPois },
-    { label: 'Thiết bị đang hoạt động', value: activeDevices, note: presenceError ? 'Không thể tải trạng thái thiết bị' : 'Có tín hiệu trong 2 phút gần nhất', icon: Smartphone, tone: 'peach', visible: viewPois },
   ].filter(card => card.visible)
   const categoryCounts = new Map<string, number>()
   for (const poi of data.pois) {

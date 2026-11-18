@@ -1,14 +1,15 @@
 import hashlib
 import html
 import json
+import logging
 import math
 import mimetypes
 import re
 import zipfile
 from datetime import datetime, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Header, Query, Response
+from fastapi import APIRouter, Header, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
@@ -18,6 +19,7 @@ from app.modules.media.storage import asset_path
 from app.modules.offline.routes import query, verify_bundle
 
 router = APIRouter(tags=['Mobile'])
+logger = logging.getLogger(__name__)
 
 class PresenceHeartbeat(BaseModel):
     installation_id: UUID
@@ -109,9 +111,35 @@ def poi_result(record, lang, trigger='manual_tap'):
     return {'poi': item, 'poi_id': item['poi_id'], 'name': content.get('name'), 'audio_url': content.get('audio_url'), 'audio_tier_available': ['tier1_pregen'] if content.get('audio_url') else [], 'trigger_source': trigger}
 
 
+def record_qr_scan(result, lang, request, response):
+    header_device_id = request.headers.get('X-Device-Id')
+    try:
+        device_uuid = UUID(header_device_id if header_device_id is not None else request.cookies.get('qr-device-id', ''))
+        if device_uuid.version != 4:
+            raise ValueError('Expected UUID v4')
+        device_id = str(device_uuid)
+    except ValueError:
+        if header_device_id is not None:
+            fail(422, 'INVALID_DEVICE_ID', 'X-Device-Id must be a valid UUID v4.')
+        device_id = str(uuid4())
+    try:
+        with database.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                'INSERT INTO analytics_events '
+                '(client_event_id,event_type,poi_id,language_code,trigger_source,device_id,occurred_at,received_at) '
+                'VALUES (%s,%s,%s,%s,%s,%s,UTC_TIMESTAMP(3),UTC_TIMESTAMP(3))',
+                (str(uuid4()), 'QR_SCAN', result['poi_id'], lang, 'qr_scan', device_id),
+            )
+    except Exception:
+        logger.exception('Failed to record QR_SCAN for POI %s', result['poi_id'])
+    response.headers['Cache-Control'] = 'no-store'
+    response.set_cookie('qr-device-id', device_id, max_age=31536000, httponly=True, secure=request.url.scheme == 'https', samesite='lax')
+
 @router.get('/poi/by-qr/{token}')
-def by_qr(token: str, lang: str = 'vi'):
-    return poi_result(find_poi(token, 'qr_code'), lang, 'qr_scan')
+def by_qr(token: str, request: Request, response: Response, lang: str = 'vi'):
+    result = poi_result(find_poi(token, 'qr_code'), lang, 'qr_scan')
+    record_qr_scan(result, lang, request, response)
+    return result
 
 
 @router.get('/poi/hotset')
@@ -246,11 +274,13 @@ def offline_asset(release_id: str, part: str, name: str):
 
 
 @router.get('/q/{token}', response_class=HTMLResponse)
-def qr_page(token: str, lang: str = 'vi'):
+def qr_page(token: str, request: Request, lang: str = 'vi'):
     result = poi_result(find_poi(token, 'qr_code'), lang, 'qr_scan')
     poi = result['poi']
     content = poi['content'].get(lang, poi['content'].get('en', {}))
     name = html.escape(content.get('name') or 'Tour Guide')
     text = html.escape(content.get('text') or '')
     audio = '<audio controls preload="none" src="' + html.escape(result['audio_url'], quote=True) + '"></audio>' if result['audio_url'] else '<p>Audio chưa sẵn sàng.</p>'
-    return HTMLResponse(f'<!doctype html><html lang="{html.escape(lang, quote=True)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{name}</title></head><body><main style="max-width:680px;margin:32px auto;padding:16px;font-family:sans-serif"><h1>{name}</h1>{audio}<p style="white-space:pre-wrap">{text}</p></main></body></html>', headers={'Cache-Control': 'no-cache', 'Content-Security-Policy': "default-src 'none'; media-src 'self'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'", 'Referrer-Policy': 'no-referrer'})
+    response = HTMLResponse(f'<!doctype html><html lang="{html.escape(lang, quote=True)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{name}</title></head><body><main style="max-width:680px;margin:32px auto;padding:16px;font-family:sans-serif"><h1>{name}</h1>{audio}<p style="white-space:pre-wrap">{text}</p></main></body></html>', headers={'Cache-Control': 'no-cache', 'Content-Security-Policy': "default-src 'none'; media-src 'self'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'", 'Referrer-Policy': 'no-referrer'})
+    record_qr_scan(result, lang, request, response)
+    return response

@@ -18,6 +18,16 @@ def health():
 def database_summary(user=Depends(require("poi.view"))):
     return {"tables": database.table_counts()}
 
+@router.get("/admin/analytics/summary")
+def analytics_summary(user=Depends(require("poi.view"))):
+    with database.connection() as connection, connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT COUNT(CASE WHEN event_type = %s THEN 1 END) AS audio_plays, "
+            "COUNT(DISTINCT device_id) AS unique_devices FROM analytics_events",
+            ("AUDIO_PLAY",),
+        )
+        return cursor.fetchone()
+
 
 class GeofenceSettings(Input):
     radius_m: int = Field(ge=10, le=200)

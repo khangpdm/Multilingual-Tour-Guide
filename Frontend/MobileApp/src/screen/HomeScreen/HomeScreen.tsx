@@ -124,7 +124,7 @@ export default function HomeScreen() {
 
         {!selectedPOI && (
           <NearbyPOI
-            nearbyPOIs={nearbyPOIs}
+            nearbyPOIs={pois} //Commit theo yeu cau
             language={language}
             userLat={userLat}
             userLng={userLng}

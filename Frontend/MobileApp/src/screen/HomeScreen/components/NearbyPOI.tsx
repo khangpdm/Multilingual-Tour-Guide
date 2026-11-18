@@ -4,6 +4,7 @@ import { POI } from '@/services/poiService';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { useApp } from '@/store/AppContext';
 
 interface NearbyPOIProps {
   nearbyPOIs: POI[];
