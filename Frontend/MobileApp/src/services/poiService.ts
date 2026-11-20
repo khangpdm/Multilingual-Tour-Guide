@@ -1,4 +1,6 @@
 import { assetUrl, httpGet } from './httpClient';
+import { readOfflinePackManifests } from './offlinePackService';
+import { File } from 'expo-file-system';
 
 export interface POI {
   id: string;
@@ -35,6 +37,33 @@ export interface PublicPOI {
       audio_url?: string | null;
     }
   >;
+}
+
+export async function fetchOfflinePOIs(zoneId: string, language: string): Promise<POI[]> {
+  const pack = await readOfflinePackManifests(zoneId, language);
+  if (!pack) return [];
+  const localizedById = new Map<string, any>(
+    (pack.localized.content || []).map((item: any) => [item.poi_id, item])
+  );
+  return (pack.common.pois || []).map((item: any) => {
+    const content = localizedById.get(item.poi_id) || {};
+    const image = item.cover_image || item.images?.[0];
+    const imageUri = image?.startsWith('assets/')
+      ? new File(pack.commonRoot, image.slice('assets/'.length)).uri
+      : image;
+    return {
+      id: item.poi_id,
+      name: { [language]: content.name || item.name || item.poi_id },
+      description: { [language]: content.text || '' },
+      ttsScript: { [language]: content.text || '' },
+      category: CATEGORY_ALIASES[item.category] || 'landmark',
+      address: { [language]: content.address || null },
+      lat: item.location?.lat || 0,
+      lng: item.location?.lng || 0,
+      coverImage: imageUri || 'https://images.unsplash.com/photo-1583417319070-4a69db38a482',
+      mapLink: item.map_link,
+    };
+  });
 }
 
 const CATEGORY_ALIASES: Record<string, string> = {

@@ -1,6 +1,6 @@
 import { DEMO_USER_LOCATIONS, Language, POIS } from '@/data/pois';
 import { fetchActiveLanguages, LanguageItem } from '@/services/languageService';
-import { fetchPOIs, POI } from '@/services/poiService';
+import { fetchPOIs, fetchOfflinePOIs, POI } from '@/services/poiService';
 import { useRouter } from 'expo-router';
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
@@ -13,6 +13,7 @@ import {
 import { AudioPlayer, createAudioPlayer } from 'expo-audio';
 import i18n, { changeAppLanguage } from '@/i18n';
 import { listOfflineInstalls, loadOfflinePOIs } from '@/services/offlineService';
+import { findOfflineAudioUri, getOfflinePackMetadata } from '@/services/offlinePackService';
 
 export type { Language };
 export type Tab = 'home' | 'explore' | 'scan' | 'download' | 'settings';
@@ -313,10 +314,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const selectedAudio = selected?.audioUrls?.[targetLang] || selected?.audioUrls?.en;
     if (selectedAudio?.startsWith('file://') && (await playAudioUrl(selectedAudio))) return;
 
+    // BƯỚC 1: Ưu tiên audio đã tải về thiết bị.
+    try {
+      const localAudioUri = await findOfflineAudioUri(poiId, targetLang);
+
+      if (localAudioUri) {
+        console.log(`[OfflineAudio] Phát audio local: ${localAudioUri}`);
+
+        const successLocal = await playAudioUrl(localAudioUri);
+
+        if (successLocal) return;
+
+        console.warn('[OfflineAudio] Phát audio local thất bại.');
+      } else {
+        console.log(`[OfflineAudio] Không tìm thấy audio local cho ${poiId}/${targetLang}`);
+      }
+    } catch (error) {
+      console.warn('[OfflineAudio] Lỗi đọc audio local:', error);
+    }
+
+    // Fallback sang Backend.
     const primaryAudioUrl = getAudioFileUrl(poiId, targetLang);
+
     console.log(`[Audio] Thử phát URL trực tiếp: ${primaryAudioUrl}`);
 
-    // BƯỚC 1: Thử phát audio có sẵn
     const successCurrent = await playAudioUrl(primaryAudioUrl);
     if (successCurrent) return;
 
@@ -458,10 +479,53 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       } catch {
         if (!closed) setPoiLoadError(true);
+
+        // Ưu tiên POI từ ZIP Offline Pack.
+        const offlinePOIs = new Map<string, POI>();
+
+        try {
+          const metadata = await getOfflinePackMetadata();
+
+          const readyPacks = Object.values(metadata).filter(
+            (pack) => pack.status === 'ready' && Boolean(pack.languages?.[language])
+          );
+
+          const zipResults = await Promise.all(
+            readyPacks.map((pack) =>
+              fetchOfflinePOIs(pack.zone_id, language).catch((error) => {
+                console.warn(`[OfflinePack] Không đọc được zone ${pack.zone_id}:`, error);
+                return [];
+              })
+            )
+          );
+
+          for (const poisFromPack of zipResults) {
+            for (const poi of poisFromPack) {
+              if (!offlinePOIs.has(poi.id)) {
+                offlinePOIs.set(poi.id, poi);
+              }
+            }
+          }
+        } catch (error) {
+          console.warn('[OfflinePack] Không thể đọc metadata:', error);
+        }
+
+        // Bổ sung POI còn thiếu từ Offline Resource.
         try {
           const saved = await loadOfflinePOIs();
-          if (!closed) setPoiList(saved);
-        } catch {}
+
+          for (const poi of saved) {
+            if (!offlinePOIs.has(poi.id)) {
+              offlinePOIs.set(poi.id, poi);
+            }
+          }
+        } catch (error) {
+          console.warn('[OfflineResource] Không thể đọc POI:', error);
+        }
+
+        if (!closed) {
+          setPoiList([...offlinePOIs.values()]);
+        }
       } finally {
         pending = false;
       }
@@ -474,7 +538,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       closed = true;
       clearInterval(timer);
     };
-  }, [isDemoMode, poiRefresh]);
+  }, [isDemoMode, poiRefresh, language]);
 
   return (
     <AppContext.Provider

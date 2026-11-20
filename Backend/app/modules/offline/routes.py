@@ -9,7 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import Field
 
-from app.core.config import MEDIA_ROOT
+from app.core.config import LANG_SHARD_MAX_LANGS, MEDIA_ROOT
 from app.core.security import require
 from app.core.state import mutation_lock
 from app.core.utils import audit, fail, get_record, identifier, public
@@ -48,6 +48,180 @@ def release_record(release_id):
         except HTTPException:
             release["outdated"] = True
     return release
+
+
+def published_release(zone_id):
+    return query(
+        "SELECT r.*, z.name AS zone_name, z.min_lng, z.min_lat, z.max_lng, z.max_lat, "
+        "z.min_zoom, z.max_zoom, z.is_active AS zone_is_active "
+        "FROM offline_pack_releases r JOIN zone z ON z.id=r.zone_id "
+        "WHERE r.zone_id=%s AND r.status='published' AND z.is_active=TRUE "
+        "LIMIT 1",
+        (zone_id,),
+        one=True,
+    )
+
+
+def checked_artifact(release_id, part, checksum, size):
+    if not checksum or not re.fullmatch(r"[a-f0-9]{64}", checksum) or not size or size <= 0:
+        fail(409, "PACK_MISSING", "Pack metadata is invalid.")
+    path = verify_bundle(release_id, part, checksum)
+    if path.stat().st_size != size:
+        fail(409, "PACK_MISSING", "Pack size does not match its metadata.")
+    return path
+
+
+def artifact_is_valid(release_id, part, checksum, size):
+    if not checksum or not re.fullmatch(r"[a-f0-9]{64}", checksum) or not size or size <= 0:
+        return False
+    try:
+        path = verify_bundle(release_id, part, checksum)
+    except HTTPException:
+        return False
+    return path.stat().st_size == size
+
+
+def mobile_artifact(zone_id, version, part):
+    return f"/offline-packs/{zone_id}/v{version}/{part}.zip"
+
+
+@router.get("/offline-packs/zones")
+def mobile_zones():
+    rows = query(
+        "SELECT r.id, r.zone_id, z.name, r.version, r.common_sha256, r.common_size_bytes, "
+        "z.min_lng, z.min_lat, z.max_lng, z.max_lat, z.min_zoom, z.max_zoom "
+        "FROM offline_pack_releases r JOIN zone z ON z.id=r.zone_id "
+        "WHERE r.status='published' AND z.is_active=TRUE "
+        "ORDER BY z.name"
+    )
+    zones = []
+    for row in rows:
+        if not artifact_is_valid(row["id"], "common", row["common_sha256"], row["common_size_bytes"]):
+            continue
+        ready_shards = query(
+            "SELECT language_code, sha256, size_bytes FROM offline_pack_languages "
+            "WHERE release_id=%s AND status='ready'",
+            (row["id"],),
+        )
+        if not any(
+            artifact_is_valid(row["id"], shard["language_code"], shard["sha256"], shard["size_bytes"])
+            for shard in ready_shards
+        ):
+            continue
+        zones.append(
+            {
+                "zone_id": row["zone_id"],
+                "name": row["name"],
+                "release_id": row["id"],
+                "version": row["version"],
+                "map_region": {
+                    "bbox": [
+                        float(row["min_lng"]),
+                        float(row["min_lat"]),
+                        float(row["max_lng"]),
+                        float(row["max_lat"]),
+                    ],
+                    "min_zoom": row["min_zoom"],
+                    "max_zoom": row["max_zoom"],
+                },
+            }
+        )
+    return {"zones": zones}
+
+
+@router.get("/offline-packs/{zone_id}/manifest")
+def mobile_manifest(zone_id: str, langs: str = Query("vi")):
+    requested = [item.strip() for item in langs.split(",") if item.strip()]
+    if not 1 <= len(requested) <= LANG_SHARD_MAX_LANGS or len(set(requested)) != len(requested):
+        fail(422, "INVALID_LANGUAGE", "Request between one and three distinct languages.")
+
+    active_languages = {
+        row["code"]
+        for row in query("SELECT code FROM languages WHERE is_active=TRUE")
+    }
+    invalid = [language for language in requested if language not in active_languages]
+    if invalid:
+        fail(422, "INVALID_LANGUAGE", f"Language {invalid[0]} is not active.")
+
+    release = published_release(zone_id)
+    if not release:
+        fail(404, "PACK_NOT_PUBLISHED", "This zone has no published offline pack.")
+
+    common_path = checked_artifact(
+        release["id"],
+        "common",
+        release["common_sha256"],
+        release["common_size_bytes"],
+    )
+    shards = []
+    for language in requested:
+        shard = query(
+            "SELECT language_code, sha256, size_bytes, status "
+            "FROM offline_pack_languages WHERE release_id=%s AND language_code=%s",
+            (release["id"], language),
+            one=True,
+        )
+        if not shard or shard["status"] != "ready":
+            fail(409, "LANGUAGE_SHARD_NOT_READY", f"Language shard {language} is not ready.")
+        checked_artifact(release["id"], language, shard["sha256"], shard["size_bytes"])
+        shards.append(
+            {
+                "language_code": language,
+                "url": mobile_artifact(zone_id, release["version"], language),
+                "sha256": shard["sha256"],
+                "size_bytes": shard["size_bytes"],
+            }
+        )
+
+    return {
+        "zone_id": zone_id,
+        "release_id": release["id"],
+        "version": release["version"],
+        "common_pack": {
+            "url": mobile_artifact(zone_id, release["version"], "common"),
+            "sha256": release["common_sha256"],
+            "size_bytes": common_path.stat().st_size,
+        },
+        "language_shards": shards,
+    }
+
+
+@router.get("/offline-packs/{zone_id}/v{version}/{part}.zip")
+def mobile_download(zone_id: str, version: int, part: str):
+    if not re.fullmatch(r"common|[a-z]{2,3}(?:-[A-Z]{2})?", part):
+        fail(404, "NOT_FOUND", "Pack not found.")
+    release = query(
+        "SELECT id, version, common_sha256, common_size_bytes "
+        "FROM offline_pack_releases "
+        "WHERE zone_id=%s AND version=%s AND status='published'",
+        (zone_id, version),
+        one=True,
+    )
+    if not release:
+        fail(404, "PACK_NOT_PUBLISHED", "This offline pack is not published.")
+
+    if part == "common":
+        checksum = release["common_sha256"]
+        size = release["common_size_bytes"]
+    else:
+        shard = query(
+            "SELECT sha256, size_bytes, status FROM offline_pack_languages "
+            "WHERE release_id=%s AND language_code=%s",
+            (release["id"], part),
+            one=True,
+        )
+        if not shard or shard["status"] != "ready":
+            fail(404, "NOT_FOUND", "Pack not found.")
+        checksum = shard["sha256"]
+        size = shard["size_bytes"]
+
+    path = checked_artifact(release["id"], part, checksum, size)
+    return FileResponse(
+        path,
+        media_type="application/zip",
+        filename=f"{part}.zip",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 def snapshot(zone_id, locales):
