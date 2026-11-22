@@ -1,15 +1,17 @@
+import { createGeofencePolygon } from '@/data/pois';
 import { useApp } from '@/store/AppContext';
 import Mapbox, {
   Camera,
   CircleLayer,
+  FillLayer,
   Images,
+  LineLayer,
   LocationPuck,
   MapView,
   ShapeSource,
   SymbolLayer,
   UserLocation,
 } from '@rnmapbox/maps';
-
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import pin from '../../assets/images/pin.png';
@@ -42,6 +44,7 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
   useEffect(() => {
     if (!HAS_MAPBOX_TOKEN) return;
     let active = true;
+
     Mapbox.setAccessToken(MAPBOX_TOKEN!)
       .then(() => {
         if (active) setMapReady(true);
@@ -49,19 +52,23 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
       .catch(() => {
         if (active) setMapFailed(true);
       });
+
     return () => {
       active = false;
     };
   }, []);
 
   useEffect(() => {
-    if (mapReady) Mapbox.requestAndroidLocationPermissions();
+    if (mapReady) {
+      void Mapbox.requestAndroidLocationPermissions();
+    }
   }, [mapReady]);
 
-  const poiGeoJSON = useMemo<GeoJSON.FeatureCollection>(() => {
-    const filteredPois =
-      selectedCategory === 'all' ? pois : pois.filter((p) => p.category === selectedCategory);
+  const filteredPois = useMemo(() => {
+    return selectedCategory === 'all' ? pois : pois.filter((p) => p.category === selectedCategory);
+  }, [selectedCategory, pois]);
 
+  const poiGeoJSON = useMemo<GeoJSON.FeatureCollection>(() => {
     return {
       type: 'FeatureCollection',
       features: filteredPois.map((poi) => ({
@@ -73,29 +80,74 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
         },
         properties: {
           id: poi.id,
-          name: typeof poi.name === 'object' ? poi.name[language] || '' : poi.name,
+          name: typeof poi.name === 'object' ? poi.name[language] || poi.name.vi || '' : poi.name,
           category: poi.category,
         },
       })),
     };
-  }, [selectedCategory, language, pois]);
+  }, [filteredPois, language]);
+
+  const geofenceGeoJSON = useMemo<GeoJSON.FeatureCollection>(() => {
+    return {
+      type: 'FeatureCollection',
+      features: filteredPois.flatMap((poi) => {
+        const lat = Number(poi.lat);
+        const lng = Number(poi.lng);
+        const radius = poi.geofence_radius_m;
+        const id = poi.id;
+
+        if (
+          poi.lat == null ||
+          poi.lng == null ||
+          !Number.isFinite(lat) ||
+          !Number.isFinite(lng) ||
+          lat < -90 ||
+          lat > 90 ||
+          lng < -180 ||
+          lng > 180
+        ) {
+          return [];
+        }
+
+        const ring = createGeofencePolygon(lng, lat, radius);
+
+        if (ring.length < 4) return [];
+
+        return [
+          {
+            type: 'Feature' as const,
+            id: `geofence-${id}`,
+            properties: {
+              id,
+              radius,
+            },
+            geometry: {
+              type: 'Polygon' as const,
+              coordinates: [ring],
+            },
+          },
+        ];
+      }),
+    };
+  }, [filteredPois]);
 
   const handleUserLocationUpdate = (location: Mapbox.Location) => {
-    if (location?.coords) {
-      const { longitude, latitude } = location.coords;
-      const coords: [number, number] = [longitude, latitude];
+    if (!location?.coords) return;
 
-      setUserCoordinates(coords);
-      setUserLocation(latitude, longitude);
+    const { longitude, latitude } = location.coords;
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return;
 
-      if (!hasFollowed) {
-        cameraRef.current?.setCamera({
-          centerCoordinate: coords,
-          zoomLevel: 15,
-          animationDuration: 1000,
-        });
-        setHasFollowed(true);
-      }
+    const coords: [number, number] = [longitude, latitude];
+    setUserCoordinates(coords);
+    setUserLocation(latitude, longitude);
+
+    if (!hasFollowed) {
+      cameraRef.current?.setCamera({
+        centerCoordinate: coords,
+        zoomLevel: 15,
+        animationDuration: 1000,
+      });
+      setHasFollowed(true);
     }
   };
 
@@ -111,10 +163,12 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
   };
 
   const handleShapeSourcePress = (e: any) => {
-    const feature = e.features?.[0] as GeoJSON.Feature;
+    const feature = e.features?.[0] as GeoJSON.Feature | undefined;
     if (!feature) return;
 
     const geometry = feature.geometry as GeoJSON.Point;
+    if (!Array.isArray(geometry?.coordinates) || geometry.coordinates.length < 2) return;
+
     const [lng, lat] = geometry.coordinates;
     const props = feature.properties;
 
@@ -128,7 +182,7 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
     }
 
     if (props?.id) {
-      setSelectedMapPOIId(props.id);
+      setSelectedMapPOIId(String(props.id));
       cameraRef.current?.setCamera({
         centerCoordinate: [lng, lat],
         zoomLevel: 16,
@@ -140,7 +194,7 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
   if (!mapReady) {
     const unavailable = !HAS_MAPBOX_TOKEN || mapFailed;
     return (
-      <View className="flex-1 w-full h-full items-center justify-center bg-slate-100 px-8">
+      <View className="h-full w-full flex-1 items-center justify-center bg-slate-100 px-8">
         <Text className="text-center text-lg font-bold text-slate-700">
           {language === 'vi'
             ? unavailable
@@ -162,7 +216,7 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
   }
 
   return (
-    <View className="relative flex-1 w-full h-full">
+    <View className="relative h-full w-full flex-1">
       <MapView
         style={{ flex: 1 }}
         styleURL={Mapbox.StyleURL.Street}
@@ -180,12 +234,22 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
         <Camera
           ref={cameraRef}
           zoomLevel={14}
-          {...(userCoordinates ? { centerCoordinate: userCoordinates } : {})}
+          defaultSettings={
+            userCoordinates ? { centerCoordinate: userCoordinates, zoomLevel: 14 } : undefined
+          }
         />
         <UserLocation onUpdate={handleUserLocationUpdate} />
         <LocationPuck puckBearingEnabled puckBearing="heading" pulsing={{ isEnabled: true }} />
 
         <Images images={{ pin }} />
+
+        <ShapeSource id="geofenceSource" shape={geofenceGeoJSON}>
+          <FillLayer id="geofenceFill" style={{ fillColor: '#14B8A6', fillOpacity: 0.15 }} />
+          <LineLayer
+            id="geofenceBorder"
+            style={{ lineColor: '#0D9488', lineWidth: 2, lineOpacity: 0.7 }}
+          />
+        </ShapeSource>
 
         <ShapeSource id="poisSource" shape={poiGeoJSON} cluster onPress={handleShapeSourcePress}>
           <CircleLayer
@@ -219,7 +283,6 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
               iconSize: 0.1,
               iconAllowOverlap: true,
               iconAnchor: 'bottom',
-
               textField: ['get', 'name'],
               textSize: 12,
               textAnchor: 'top',
@@ -237,12 +300,9 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
       <TouchableOpacity
         activeOpacity={0.8}
         onPress={handleReCenter}
-        className="absolute top-3 right-5 bg-white px-4 py-3 rounded-full shadow-lg border border-gray-100
-        items-center justify-center active:bg-gray-100"
+        className="absolute right-5 top-3 items-center justify-center rounded-full border border-gray-100 bg-white px-4 py-3 shadow-lg active:bg-gray-100"
       >
-        <Text className="font-bold text-teal-600">
-          <IconTarget color="#00897B" />
-        </Text>
+        <IconTarget color="#00897B" />
       </TouchableOpacity>
     </View>
   );

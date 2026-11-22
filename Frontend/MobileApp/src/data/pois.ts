@@ -368,16 +368,6 @@ export const DEMO_USER_LOCATIONS = {
   far: { lat: 10.781, lng: 106.694, label: 'Xa tất cả các địa điểm' },
 };
 
-export function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371000;
-  const f1 = (lat1 * Math.PI) / 180;
-  const f2 = (lat2 * Math.PI) / 180;
-  const df = ((lat2 - lat1) * Math.PI) / 180;
-  const dl = ((lng2 - lng1) * Math.PI) / 180;
-  const a = Math.sin(df / 2) ** 2 + Math.cos(f1) * Math.cos(f2) * Math.sin(dl / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
 export function formatDistance(m: number): string {
   if (m < 1000) return `${Math.round(m)} m`;
   return `${(m / 1000).toFixed(1)} km`;
@@ -428,4 +418,53 @@ export const QR_POI_MAP: Record<string, string> = {
   'VG-OPERA': 'opera-house',
   'VG-NGUYEN-HUE': 'nguyen-hue',
   'VG-ZOO': 'zoo',
+};
+
+const EARTH_RADIUS_METERS = 6371000;
+
+const toRad = (deg: number): number => (deg * Math.PI) / 180;
+const toDeg = (rad: number): number => (rad * 180) / Math.PI;
+
+export function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const f1 = toRad(lat1);
+  const f2 = toRad(lat2);
+  const df = toRad(lat2 - lat1);
+  const dl = toRad(lng2 - lng1);
+
+  const a = Math.sin(df / 2) ** 2 + Math.cos(f1) * Math.cos(f2) * Math.sin(dl / 2) ** 2;
+
+  return EARTH_RADIUS_METERS * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export const createGeofencePolygon = (
+  lng: number,
+  lat: number,
+  radius: number,
+  segments = 64
+): GeoJSON.Position[] => {
+  const coordinates: GeoJSON.Position[] = [];
+
+  const latRad = toRad(lat);
+  const lngRad = toRad(lng);
+  const angularDistance = radius / EARTH_RADIUS_METERS;
+
+  for (let i = 0; i <= segments; i++) {
+    const bearing = (2 * Math.PI * i) / segments;
+
+    const newLat = Math.asin(
+      Math.sin(latRad) * Math.cos(angularDistance) +
+        Math.cos(latRad) * Math.sin(angularDistance) * Math.cos(bearing)
+    );
+
+    const newLng =
+      lngRad +
+      Math.atan2(
+        Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(latRad),
+        Math.cos(angularDistance) - Math.sin(latRad) * Math.sin(newLat)
+      );
+
+    coordinates.push([toDeg(newLng), toDeg(newLat)]);
+  }
+
+  return coordinates;
 };
