@@ -27,6 +27,7 @@ def initialize_auth():
         for statement in Path(__file__).with_name("schema.sql").read_text(encoding="utf-8").split(";"):
             if statement.strip():
                 cursor.execute(statement)
+        database._ensure_column(cursor, "auth_account_security", "locked_by_admin", "BOOLEAN NOT NULL DEFAULT FALSE")
         cursor.execute("DELETE FROM auth_challenges WHERE expires_at<=UTC_TIMESTAMP(3)")
         cursor.execute("DELETE proof FROM auth_session_assurance proof LEFT JOIN admin_sessions session ON session.token_hash=proof.token_hash WHERE session.token_hash IS NULL")
 
@@ -66,11 +67,13 @@ def lock_state(cursor, user_id):
 
 
 def check_active(connection, user):
-    if user["status"] != "ACTIVE":
+    if user["status"] != "ACTIVE" or user.get("invite_token_hash"):
         reject(connection, 403, "ACCOUNT_DEACTIVATED", "Tài khoản chưa kích hoạt hoặc đã bị vô hiệu hóa. Vui lòng liên hệ quản trị viên.")
 
 
 def check_lock(connection, state, current_time):
+    if state.get("locked_by_admin"):
+        reject(connection, 423, "ACCOUNT_LOCKED", "Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.")
     if state["locked_until"] and state["locked_until"] > current_time:
         reject(connection, 423, "ACCOUNT_LOCKED", f"Tài khoản bị khóa tạm thời. Thử lại sau {state['locked_until'].isoformat()}Z (UTC).")
 
@@ -96,11 +99,11 @@ def grant_session(cursor, user, old_token, mfa_verified=False):
     cursor.execute("INSERT INTO auth_session_assurance (token_hash,credential_hash,mfa_verified) VALUES (%s,%s,%s)", (token_hash(token), fingerprint(user), mfa_verified))
     cursor.execute("UPDATE users SET last_login_at=%s WHERE id=%s", (current_time, user["id"]))
     cursor.execute("UPDATE auth_account_security SET failed_attempts=0,locked_until=NULL WHERE user_id=%s", (user["id"],))
-    write_audit(cursor, user, "login_success", {"mfa_bypassed_local": True} if user["role_id"] == "super_admin" and not mfa_verified else None)
+    write_audit(cursor, user, "login_success")
     return token
 
 
-def login_email(email, password, old_token=None, *, local_mfa_bypass=False):
+def login_email(email, password, old_token=None):
     with transaction() as (connection, cursor):
         cursor.execute("SELECT * FROM users WHERE email=%s FOR UPDATE", (email,))
         user = cursor.fetchone()
@@ -123,7 +126,7 @@ def login_email(email, password, old_token=None, *, local_mfa_bypass=False):
         mapped = {**user, "_id": user["id"], "status": "active"}
         if not user_permissions(mapped):
             reject(connection, 403, "ADMIN_ACCESS_DENIED", "Tài khoản không có quyền truy cập Admin.")
-        if user["role_id"] == "super_admin" and not local_mfa_bypass:
+        if user["role_id"] == "super_admin":
             code = f"{secrets.randbelow(1000000):06d}"
             challenge = issue_challenge(cursor, user, "mfa", 300, code)
             result = {"mfa_required": True, "challenge_token": challenge, "expires_in": 300}
@@ -132,10 +135,10 @@ def login_email(email, password, old_token=None, *, local_mfa_bypass=False):
             return {"session_token": grant_session(cursor, user, old_token), "user_id": user["id"]}
     try:
         send_auth_email(recipient, "Tour Guide - Mã xác thực đăng nhập", f"Mã OTP của bạn: {code}\nCó hiệu lực trong 5 phút. Không chia sẻ mã này.")
-    except Exception:
+    except Exception as error:
         with database.connection() as connection, connection.cursor() as cursor:
             cursor.execute("DELETE FROM auth_challenges WHERE token_hash=%s", (token_hash(challenge),))
-        logger.warning("MFA email delivery failed; no session issued.")
+        logger.warning("MFA email delivery failed (type=%s, SMTP status=%s).", type(error).__name__, getattr(error, "smtp_code", None))
         fail(503, "AUTH_EMAIL_UNAVAILABLE", "Không thể hoàn tất đăng nhập. Vui lòng thử lại sau.")
     return result
 
@@ -152,7 +155,7 @@ def challenge_user(cursor, digest, kind):
 
 
 def valid_challenge(user, challenge):
-    return bool(user and challenge and user["status"] == "ACTIVE" and challenge["expires_at"] > now().replace(tzinfo=None) and hmac.compare_digest(challenge["credential_hash"], fingerprint(user)))
+    return bool(user and challenge and user["status"] == "ACTIVE" and not user["invite_token_hash"] and challenge["expires_at"] > now().replace(tzinfo=None) and hmac.compare_digest(challenge["credential_hash"], fingerprint(user)))
 
 
 def verify_mfa(challenge_token, code, old_token=None):
@@ -177,13 +180,18 @@ def verify_mfa(challenge_token, code, old_token=None):
         return {"session_token": grant_session(cursor, user, old_token, mfa_verified=True), "user_id": user["id"]}
 
 
+def send_password_reset(recipient, token):
+    url = password_reset_url(token)
+    send_auth_email(recipient, "Tour Guide - Đặt lại mật khẩu", f"Mở liên kết để đặt lại mật khẩu:\n{url}\nLiên kết dùng một lần, hết hạn sau {RESET_SECONDS // 60} phút.")
+
+
 def request_password_reset(email):
     digest = None
     try:
         with transaction() as (connection, cursor):
             cursor.execute("SELECT * FROM users WHERE email=%s FOR UPDATE", (email,))
             user = cursor.fetchone()
-            if not user or user["status"] != "ACTIVE":
+            if not user or user["status"] != "ACTIVE" or user["invite_token_hash"]:
                 return
             cursor.execute("SELECT created_at FROM auth_challenges WHERE user_id=%s AND kind='reset'", (user["id"],))
             previous = cursor.fetchone()
@@ -192,10 +200,9 @@ def request_password_reset(email):
             token = issue_challenge(cursor, user, "reset", RESET_SECONDS)
             digest = token_hash(token)
             recipient = user["email"]
-        url = password_reset_url(token)
-        send_auth_email(recipient, "Tour Guide - Đặt lại mật khẩu", f"Mở liên kết để đặt lại mật khẩu:\n{url}\nLiên kết dùng một lần, hết hạn sau {RESET_SECONDS // 60} phút. Nếu không yêu cầu, hãy bỏ qua email này.")
-    except Exception:
-        logger.warning("Password reset could not be delivered; generic response retained.")
+        send_password_reset(recipient, token)
+    except Exception as error:
+        logger.warning("Password reset email delivery failed (type=%s, SMTP status=%s).", type(error).__name__, getattr(error, "smtp_code", None))
         if digest:
             try:
                 with database.connection() as connection, connection.cursor() as cursor:
@@ -215,5 +222,5 @@ def reset_password(token, password):
         cursor.execute("UPDATE users SET password_hash=%s,password_salt=NULL WHERE id=%s", (hashed, user["id"]))
         cursor.execute("DELETE FROM admin_sessions WHERE user_id=%s", (user["id"],))
         cursor.execute("DELETE FROM auth_challenges WHERE user_id=%s", (user["id"],))
-        cursor.execute("DELETE FROM auth_account_security WHERE user_id=%s", (user["id"],))
+        cursor.execute("UPDATE auth_account_security SET failed_attempts=0,locked_until=NULL WHERE user_id=%s", (user["id"],))
         write_audit(cursor, user, "password_reset")

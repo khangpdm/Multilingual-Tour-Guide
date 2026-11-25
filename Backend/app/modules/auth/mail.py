@@ -31,10 +31,14 @@ def send_auth_email(recipient, subject, text):
             raise RuntimeError("Authentication email was rejected.")
 
 
-def password_reset_url(token):
+def account_link(path, token):
     base = settings.get("ADMIN_PUBLIC_URL", "").rstrip("/")
     parsed = urlsplit(base)
     local = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
     if not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment or (parsed.scheme != "https" and not (local and parsed.scheme == "http")):
         raise RuntimeError("ADMIN_PUBLIC_URL must be a trusted HTTPS Admin URL (HTTP allowed only on loopback).")
-    return f"{base}/reset-password?token={token}"
+    return f"{base}{path}?token={token}"
+
+
+def password_reset_url(token):
+    return account_link("/reset-password", token)

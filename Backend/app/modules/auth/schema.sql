@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS auth_account_security (
     user_id CHAR(36) NOT NULL PRIMARY KEY,
     failed_attempts INT UNSIGNED NOT NULL DEFAULT 0,
     locked_until DATETIME(3) NULL,
+    locked_by_admin BOOLEAN NOT NULL DEFAULT FALSE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

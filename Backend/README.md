@@ -89,19 +89,12 @@ can be retried if their script/audio fingerprint still matches. Existing uploade
 MP3 is protected unless the administrator explicitly allows replacement. For
 an unambiguous test, create a separate POI rather than overwrite uploaded audio.
 
-### Local development without email OTP
+### Local authentication testing
 
-For loopback-only development, set `APP_ENV=development` and
-`ADMIN_LOCAL_MFA_BYPASS=true` in `Backend/.env`, then restart the backend.
-Email/password validation, rate limits and account locks still apply. This
-exception requires both a loopback client address and a localhost/loopback URL.
-Local bypass sessions are not marked MFA-verified and are rejected when the
-exception is disabled or the request is not local. The login audit records the
-bypass. Password-reset email still requires SMTP.
-
-Keep `ADMIN_LOCAL_MFA_BYPASS=false` (the default) in production. Do not expose
-this development server through a tunnel or reverse proxy while bypass is on.
-Before deployment, disable bypass, configure SMTP and use a strong password.
+Super Admin login requires the emailed OTP, including on loopback. Configure
+SMTP and use a Super Admin mailbox you can access to test this path. A regular
+Admin account can sign in with email and password. Password reset for either
+role sends a one-time link to the account email.
 
 Admin data maps to `users`, `roles`, `permissions`, `role_permissions`, `languages`, `zone`, `poi`, `poi_content`, and `audit_logs`. Hashed sessions use `admin_sessions`. POI coordinates use MySQL `POINT SRID 4326`; localized content is stored per language. Archive metadata uses additive columns so existing rows are retained.
 
@@ -144,11 +137,21 @@ audit records commit together; role changes and deactivation revoke sessions.
 - `PUT /admin/users/{user_id}/deactivate`: deactivate and revoke sessions/invitation.
 - `POST /auth/activate`: `{token, password, full_name}`; one-use, seven-day invitation.
 
-Local invitations are delivered manually, not by email: the invite response
-contains a generated `username` and relative `activation_path`, displayed once
-in the Admin dialog. Share both privately with the intended recipient. The
-database stores only the invitation token hash; audit records never contain the
-token or password. After activation the recipient signs in with their email. Invitation email delivery remains outside the H1 scope; see the account-management limitations here.
+Account management is reserved for Super Admin. Startup seeds the Admin and
+POI Manager roles and adds a manual-lock flag to the authentication table.
+The legacy local_admin role remains available for existing accounts.
+
+The server sends activation and reset links through SMTP. Creation persists the
+account before email delivery. The account appears as waiting for activation
+until its initial password is set. If sending fails, the dashboard warns and
+allows a retry. Activation links are valid for seven days by default
+(`ADMIN_INVITE_TTL_DAYS`). The activation link is also shown once for private
+sharing. Only its hash is stored; audit records contain no passwords or links.
+
+- `POST /admin/users/{user_id}/reissue-invitation`: replace and send the activation link.
+- `PUT /admin/users/{user_id}/lock` or `/unlock`: manage lock state.
+- `POST /admin/users/{user_id}/send-password-reset`: send a one-time reset link.
+
 Responses under `/auth` and `/admin` are not cacheable.
 
 `capabilities.permission_catalog` lists implemented permissions for the live UI.

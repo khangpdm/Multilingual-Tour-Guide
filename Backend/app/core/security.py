@@ -4,10 +4,10 @@ import hmac
 import bcrypt
 from fastapi import Depends, Request
 
-from app.core.config import COOKIE, PERMISSIONS, settings
+from app.core.config import COOKIE, MANAGEMENT_PERMISSIONS, PERMISSIONS, settings
 from app.core.utils import fail, now, public
 from app.db.connection import database
-from app.modules.auth.sessions import credential_fingerprint, local_mfa_bypass_enabled
+from app.modules.auth.sessions import credential_fingerprint
 
 
 def password_hash(password, salt=None):
@@ -29,7 +29,6 @@ def password_matches(password, user):
     except (ValueError, TypeError, UnicodeError):
         return False
 
-
 def current_user(request: Request):
     token = request.cookies.get(COOKIE, "")
     session = database.fetch_valid_session(hashlib.sha256(token.encode()).hexdigest(), now()) if token else None
@@ -39,9 +38,9 @@ def current_user(request: Request):
     if not user or user.get("status") != "active":
         fail(403, "ACCOUNT_DEACTIVATED", "Account is not active.")
     with database.connection() as connection, connection.cursor() as cursor:
-        cursor.execute("SELECT credential_hash,mfa_verified FROM auth_session_assurance WHERE token_hash=%s", (session["_id"],))
+        cursor.execute("SELECT proof.credential_hash,proof.mfa_verified,security.locked_by_admin FROM auth_session_assurance proof LEFT JOIN auth_account_security security ON security.user_id=%s WHERE proof.token_hash=%s", (user["_id"], session["_id"]))
         assurance = cursor.fetchone()
-    if not assurance or not hmac.compare_digest(assurance["credential_hash"], credential_fingerprint(user)) or (user["role_id"] == "super_admin" and not assurance["mfa_verified"] and not local_mfa_bypass_enabled(request)):
+    if not assurance or assurance["locked_by_admin"] or not hmac.compare_digest(assurance["credential_hash"], credential_fingerprint(user)) or (user["role_id"] == "super_admin" and not assurance["mfa_verified"]):
         fail(401, "UNAUTHENTICATED", "Please sign in.")
     if not user_permissions(user):
         fail(403, "ADMIN_ACCESS_DENIED", "This account has no Admin permissions.")
@@ -54,7 +53,7 @@ def user_permissions(user):
         return []
     if role["role_id"] == "super_admin" and role.get("is_system") and role["level"] == 3:
         return list(PERMISSIONS)
-    return [permission for permission in (role or {}).get("permissions", []) if permission in PERMISSIONS]
+    return [permission for permission in (role or {}).get("permissions", []) if permission in PERMISSIONS and permission not in MANAGEMENT_PERMISSIONS]
 
 
 def require(permission):

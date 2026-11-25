@@ -1,20 +1,51 @@
 import json
+import logging
 import secrets
 from contextlib import contextmanager
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pymysql import IntegrityError
 
-from app.core.config import PERMISSIONS
+from app.core.config import PERMISSIONS, settings
 from app.core.security import password_hash, require
 from app.core.utils import fail, identifier, now, public
 from app.db.connection import database
+from app.modules.auth.mail import account_link, send_auth_email
+from app.modules.auth.service import RESET_SECONDS, issue_challenge, send_password_reset
 from app.modules.auth.sessions import token_hash
 from app.modules.management.schemas import Activation, PermissionChanges, RoleCreate, UserEdit, UserInvite
 
 router = APIRouter()
-USER_FIELDS = "id AS user_id,username,email,full_name,role_id,LOWER(status) AS status,created_at,last_login_at,invite_expires_at"
+logger = logging.getLogger(__name__)
+INVITE_DAYS = int(settings.get("ADMIN_INVITE_TTL_DAYS", "7"))
+if INVITE_DAYS < 1:
+    raise RuntimeError("ADMIN_INVITE_TTL_DAYS must be positive.")
+
+USER_FIELDS = """id AS user_id,username,email,full_name,role_id,
+    CASE WHEN status='ACTIVE' AND invite_token_hash IS NOT NULL THEN 'pending_activation'
+         WHEN status='ACTIVE' AND EXISTS (
+             SELECT 1 FROM auth_account_security AS security WHERE security.user_id=users.id
+             AND (security.locked_by_admin OR security.locked_until>UTC_TIMESTAMP(3))
+         ) THEN 'locked'
+         ELSE LOWER(status) END AS status,
+    created_at,last_login_at,invite_expires_at"""
+
+
+def deliver_account_email(send, *args):
+    try:
+        send(*args)
+        return "sent"
+    except Exception as error:
+        logger.warning("Account email delivery failed (type=%s, SMTP status=%s).", type(error).__name__, getattr(error, "smtp_code", None))
+        return "failed"
+
+
+def send_invitation(email, token):
+    url = account_link("/activate", token)
+    send_auth_email(email, "Tour Guide - Thiết lập mật khẩu lần đầu",
+                    f"Mở liên kết để thiết lập mật khẩu:\n{url}\nLiên kết dùng một lần và hết hạn sau {INVITE_DAYS} ngày.")
+
 
 
 def role_permissions(cursor, role_id):
@@ -81,7 +112,7 @@ def list_roles(user=Depends(require("role.view"))):
 @router.post("/admin/roles", status_code=201)
 def create_role(body: RoleCreate, user=Depends(require("role.create"))):
     with transaction(user, "role.create") as (cursor, roles, actor):
-        if body.role_id in {"super_admin", "user", "local_admin"} or body.role_id in roles:
+        if body.role_id in {"super_admin", "admin", "poi_manager", "user", "local_admin"} or body.role_id in roles:
             fail(409, "ROLE_EXISTS", "Role ID is reserved or already exists.")
         check_role_access(actor, {"level": body.level})
         check_permissions(cursor, actor, body.permission_ids)
@@ -95,7 +126,7 @@ def create_role(body: RoleCreate, user=Depends(require("role.create"))):
 @router.post("/admin/roles/{role_id}/permissions")
 def change_permissions(role_id: str, body: PermissionChanges, user=Depends(require("role.assign_permission"))):
     with transaction(user, "role.assign_permission") as (cursor, roles, actor):
-        if role_id in {"super_admin", "user", actor["role_id"]}:
+        if role_id in {"super_admin", "admin", "poi_manager", "user", actor["role_id"]}:
             fail(403, "PROTECTED_ROLE", "This role cannot be modified.")
         if role_id not in roles:
             fail(404, "NOT_FOUND", "Record not found.")
@@ -128,14 +159,14 @@ def invite_user(body: UserInvite, response: Response, user=Depends(require("user
     token = secrets.token_urlsafe(32)
     user_id = identifier("user")
     username = "member_" + user_id.replace("-", "")
-    expires = now().replace(tzinfo=None) + timedelta(days=7)
+    expires = now().replace(tzinfo=None) + timedelta(days=INVITE_DAYS)
     with transaction(user, "user.create") as (cursor, roles, actor):
         check_role_access(actor, roles.get(body.role_id))
         check_permissions(cursor, actor, role_permissions(cursor, body.role_id))
-        cursor.execute("INSERT INTO users (id,username,email,password_hash,full_name,role_id,status,invite_token_hash,invite_expires_at) VALUES (%s,%s,%s,%s,%s,%s,'PENDING_ACTIVATION',%s,%s)", (user_id, username, body.email, password_hash(secrets.token_urlsafe(32)), body.full_name, body.role_id, token_hash(token), expires))
+        cursor.execute("INSERT INTO users (id,username,email,password_hash,full_name,role_id,status,invite_token_hash,invite_expires_at) VALUES (%s,%s,%s,%s,%s,%s,'ACTIVE',%s,%s)", (user_id, username, body.email, password_hash(secrets.token_urlsafe(32)), body.full_name, body.role_id, token_hash(token), expires))
         write_audit(cursor, user, "user.invite", user_id, None, {"email": body.email, "role_id": body.role_id})
     response.headers["Cache-Control"] = "no-store"
-    return {"user_id": user_id, "username": username, "activation_path": "/activate?token=" + token, "delivery": "manual", "invite_expires_at": public({"value": expires})["value"]}
+    return {"user_id": user_id, "username": username, "activation_path": "/activate?token=" + token, "delivery": deliver_account_email(send_invitation, body.email, token)}
 
 
 def target_user(cursor, roles, actor, user_id):
@@ -148,10 +179,33 @@ def target_user(cursor, roles, actor, user_id):
     return target
 
 
+@router.post("/admin/users/{user_id}/reissue-invitation")
+def reissue_invitation(user_id: str, response: Response, user=Depends(require("user.create"))):
+    with transaction(user, "user.create") as (cursor, roles, actor):
+        target = target_user(cursor, roles, actor, user_id)
+        if target["status"] != "pending_activation":
+            fail(409, "INVITATION_NOT_PENDING", "Chỉ có thể cấp lại link cho tài khoản đang chờ kích hoạt.")
+        check_permissions(cursor, actor, role_permissions(cursor, target["role_id"]))
+        token = secrets.token_urlsafe(32)
+        expires = now().replace(tzinfo=None) + timedelta(days=INVITE_DAYS)
+        cursor.execute(
+            "UPDATE users SET invite_token_hash=%s, invite_expires_at=%s WHERE id=%s",
+            (token_hash(token), expires, user_id),
+        )
+        expires_at = public({"value": expires})["value"]
+        write_audit(cursor, user, "user.reissue_invitation", user_id, None, {"invite_expires_at": expires_at})
+    response.headers["Cache-Control"] = "no-store"
+    return {"username": target["username"], "activation_path": "/activate?token=" + token, "delivery": deliver_account_email(send_invitation, target["email"], token)}
+
+
 def protect_last_super(cursor, target):
-    if target["role_id"] == "super_admin" and target["status"] == "active":
-        cursor.execute("SELECT id FROM users WHERE role_id='super_admin' AND status='ACTIVE' FOR UPDATE")
-        if len(cursor.fetchall()) <= 1:
+    if target["role_id"] == "super_admin" and target["status"] in {"active", "locked"}:
+        cursor.execute("""SELECT id FROM users WHERE role_id='super_admin' AND status='ACTIVE'
+                       AND invite_token_hash IS NULL AND id<>%s AND NOT EXISTS (
+                           SELECT 1 FROM auth_account_security AS security WHERE security.user_id=users.id
+                           AND (security.locked_by_admin OR security.locked_until>UTC_TIMESTAMP(3))
+                       ) FOR UPDATE""", (target["user_id"],))
+        if not cursor.fetchone():
             fail(409, "LAST_SUPER_ADMIN", "The last active Super Admin must remain active.")
 
 
@@ -187,10 +241,48 @@ def deactivate_user(user_id: str, user=Depends(require("user.deactivate"))):
     return {"user_id": user_id, "status": "deactivated"}
 
 
+@router.put("/admin/users/{user_id}/lock")
+@router.put("/admin/users/{user_id}/unlock")
+def set_user_lock(user_id: str, request: Request, user=Depends(require("user.deactivate"))):
+    locked = request.url.path.endswith("/lock")
+    with transaction(user, "user.deactivate") as (cursor, roles, actor):
+        target = target_user(cursor, roles, actor, user_id)
+        if locked and user_id == actor["id"]:
+            fail(403, "SELF_LOCK", "Bạn không thể tự khóa tài khoản.")
+        if target["status"] != ("active" if locked else "locked"):
+            fail(409, "INVALID_ACCOUNT_STATE", "Trạng thái tài khoản đã thay đổi. Vui lòng tải lại.")
+        if locked:
+            protect_last_super(cursor, target)
+        cursor.execute(
+            "INSERT INTO auth_account_security (user_id,locked_by_admin) VALUES (%s,%s) "
+            "ON DUPLICATE KEY UPDATE locked_by_admin=%s,failed_attempts=0,locked_until=NULL",
+            (user_id, locked, locked),
+        )
+        if locked:
+            cursor.execute("DELETE FROM admin_sessions WHERE user_id=%s", (user_id,))
+            cursor.execute("DELETE FROM auth_challenges WHERE user_id=%s AND kind='mfa'", (user_id,))
+        status = "locked" if locked else "active"
+        write_audit(cursor, user, "user.lock" if locked else "user.unlock", user_id,
+                    {"status": target["status"]}, {"status": status})
+    return {"user_id": user_id, "status": status}
+
+
+@router.post("/admin/users/{user_id}/send-password-reset")
+def send_user_password_reset(user_id: str, user=Depends(require("user.edit"))):
+    with transaction(user, "user.edit") as (cursor, roles, actor):
+        target = target_user(cursor, roles, actor, user_id)
+        if target["status"] not in {"active", "locked"}:
+            fail(409, "INVALID_ACCOUNT_STATE", "Tài khoản cần thiết lập mật khẩu trước khi đặt lại.")
+        cursor.execute("SELECT * FROM users WHERE id=%s", (user_id,))
+        token = issue_challenge(cursor, cursor.fetchone(), "reset", RESET_SECONDS)
+        write_audit(cursor, user, "user.request_password_reset", user_id, None, None)
+    return {"delivery": deliver_account_email(send_password_reset, target["email"], token)}
+
+
 @router.post("/auth/activate")
 def activate_user(body: Activation):
     with transaction() as (cursor, roles, actor):
-        cursor.execute("SELECT id,username FROM users WHERE invite_token_hash=%s AND invite_expires_at>UTC_TIMESTAMP(3) AND status='PENDING_ACTIVATION' FOR UPDATE", (token_hash(body.token),))
+        cursor.execute("SELECT id,username FROM users WHERE invite_token_hash=%s AND invite_expires_at>UTC_TIMESTAMP(3) AND status IN ('PENDING_ACTIVATION','ACTIVE') FOR UPDATE", (token_hash(body.token),))
         target = cursor.fetchone()
         if not target:
             fail(422, "INVALID_INVITATION", "Invitation is invalid, expired or already used.")

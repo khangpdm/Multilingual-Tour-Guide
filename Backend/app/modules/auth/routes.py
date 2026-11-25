@@ -10,7 +10,7 @@ from app.core.utils import fail
 from app.db.connection import database
 from app.modules.auth.schemas import EmailInput, EmailLogin, ResetPassword, VerifyMfa
 from app.modules.auth.service import login_email, request_password_reset, reset_password, verify_mfa
-from app.modules.auth.sessions import local_mfa_bypass_enabled, rotate_session, set_session_cookie, token_hash
+from app.modules.auth.sessions import rotate_session, set_session_cookie, token_hash
 
 router = APIRouter()
 
@@ -47,7 +47,7 @@ def login_response(result, response):
 @router.post("/auth/login")
 def login(body: EmailLogin, request: Request, response: Response):
     rate_limit(request, "login", body.email)
-    return login_response(login_email(body.email, body.password, request.cookies.get(COOKIE), local_mfa_bypass=local_mfa_bypass_enabled(request)), response)
+    return login_response(login_email(body.email, body.password, request.cookies.get(COOKIE)), response)
 
 
 @router.post("/auth/mfa/verify")

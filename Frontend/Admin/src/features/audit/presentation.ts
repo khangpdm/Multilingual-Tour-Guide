@@ -11,7 +11,7 @@ export const auditActions: Record<string, string> = {
   'language.create': 'Thêm ngôn ngữ', 'language.update': 'Cập nhật ngôn ngữ',
   'system.geofence_update': 'Thay đổi bán kính nhận diện chung',
   'offline.build': 'Tạo gói offline', 'offline.publish': 'Phát hành gói offline',
-  'offline.withdraw': 'Thu hồi gói offline', 'user.invite': 'Mời tài khoản quản trị',
+  'offline.withdraw': 'Thu hồi gói offline', 'user.invite': 'Mời tài khoản quản trị', 'user.reissue_invitation': 'Cấp lại link kích hoạt', 'user.lock': 'Khóa tài khoản', 'user.unlock': 'Mở khóa tài khoản', 'user.request_password_reset': 'Yêu cầu đặt lại mật khẩu',
   'user.update': 'Cập nhật tài khoản', 'user.deactivate': 'Vô hiệu hóa tài khoản',
   'user.activate': 'Kích hoạt tài khoản', 'role.create': 'Tạo vai trò',
   'role.assign_permission': 'Thay đổi quyền của vai trò', 'login_success': 'Đăng nhập thành công',

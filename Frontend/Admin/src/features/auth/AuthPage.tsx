@@ -14,7 +14,7 @@ export function AuthPage({ activation = false, reset = false }: { activation?: b
   const [password, setPassword] = useState('')
   const [confirmation, setConfirmation] = useState('')
   const [name, setName] = useState('')
-  const [forgot, setForgot] = useState(false)
+  const [forgot, setForgot] = useState(() => location.state?.requestPasswordReset === true)
   const [challenge, setChallenge] = useState<MfaChallenge | null>(null)
   const [code, setCode] = useState('')
   const [expiresAt, setExpiresAt] = useState(0)
@@ -22,7 +22,7 @@ export function AuthPage({ activation = false, reset = false }: { activation?: b
   const [pending, setPending] = useState(false)
   const [done, setDone] = useState(false)
   const [message, setMessage] = useState('')
-  const [error, setError] = useState('')
+  const [error, setError] = useState(() => location.state?.passwordResetError || '')
   const [showPassword, setShowPassword] = useState(false)
   const newPassword = activation || reset
 
@@ -71,6 +71,13 @@ export function AuthPage({ activation = false, reset = false }: { activation?: b
         else navigate('/', { replace: true })
       }
     } catch (reason) {
+      if (reset && reason instanceof ApiError && reason.code === 'RESET_LINK_INVALID') {
+        navigate('/login', {
+          replace: true,
+          state: { requestPasswordReset: true, passwordResetError: reason.message },
+        })
+        return
+      }
       setError((reason as Error).message)
       if (reason instanceof ApiError && ['MFA_EXPIRED', 'ACCOUNT_LOCKED', 'ACCOUNT_DEACTIVATED', 'ADMIN_ACCESS_DENIED'].includes(reason.code || '')) {
         setChallenge(null); setCode('')

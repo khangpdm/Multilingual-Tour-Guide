@@ -351,6 +351,16 @@ class MySQLDatabase:
                 cur.execute("INSERT IGNORE INTO permissions (id,domain) VALUES (%s,%s)", (permission, permission.split(".")[0]))
                 if permission not in MANAGEMENT_PERMISSIONS and (new_local_role or cur.rowcount == 1):
                     cur.execute("INSERT IGNORE INTO role_permissions (role_id,permission_id) VALUES ('local_admin',%s)", (permission,))
+            for role_id, name, level in (("poi_manager", "Quản lý điểm tham quan", 1), ("admin", "Quản trị viên", 2)):
+                cur.execute("INSERT IGNORE INTO roles (id,name,level,is_system) VALUES (%s,%s,%s,TRUE)", (role_id, name, level))
+                cur.execute("SELECT is_system FROM roles WHERE id=%s", (role_id,))
+                role = cur.fetchone()
+                if not role or not role["is_system"]:
+                    raise RuntimeError(f"The reserved {role_id} role conflicts with an existing custom role.")
+                for permission in PERMISSIONS:
+                    if permission in MANAGEMENT_PERMISSIONS or (level == 1 and permission.split(".")[0] not in {"poi", "audio", "offline"}):
+                        continue
+                    cur.execute("INSERT IGNORE INTO role_permissions (role_id,permission_id) VALUES (%s,%s)", (role_id, permission))
             cur.execute("SELECT level,is_system FROM roles WHERE id='super_admin'")
             existing_super = cur.fetchone()
             if existing_super and (existing_super["level"] != 3 or not existing_super["is_system"]):

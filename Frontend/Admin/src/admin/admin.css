@@ -219,3 +219,20 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   body.printing-poi-qr .qr-print-card, body.printing-poi-qr .qr-print-card * { visibility: visible; }
   body.printing-poi-qr .qr-print-card { position: absolute; top: 25mm; left: 25mm; width: 140mm; max-width: none; border: 0; box-shadow: none; }
 }
+
+.account-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.account-row-actions > button {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.account-row-actions > .danger-button:hover {
+  background: #ffe4dc;
+}
