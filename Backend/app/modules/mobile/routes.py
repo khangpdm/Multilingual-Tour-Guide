@@ -1,3 +1,7 @@
+from fastapi import APIRouter, Header, Query, Request, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from pydantic import BaseModel, Field
+
 import hashlib
 import html
 import json
@@ -8,18 +12,20 @@ import re
 import zipfile
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
+from app.services.audio_service import resolve_safe_path
 
-from fastapi import APIRouter, Header, Query, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
-from pydantic import BaseModel, Field
 
 from app.core.utils import fail, public
 from app.db.connection import database
 from app.modules.media.storage import asset_path
 from app.modules.offline.routes import query, verify_bundle
+from pathlib import Path
 
 router = APIRouter(tags=['Mobile'])
 logger = logging.getLogger(__name__)
+
+
+AUDIO_ROOT = Path('/home/khangpham/Documents/Voice-Travel/Multilingual-Tour-Guide/Backend/static/audio')
 
 class PresenceHeartbeat(BaseModel):
     installation_id: UUID
@@ -50,8 +56,14 @@ def active_languages():
     return {item['code'] for item in database.fetch_all('languages', {'is_active': True})}
 
 
-def media_url(url):
-    return url.replace('/admin/assets/', '/media/', 1) if url and url.startswith('/admin/assets/') else None
+def media_url(url, poi_id=None, locale=None):
+    if url:
+        return url.replace('/admin/assets/', '/media/', 1) if url.startswith('/admin/assets/') else url
+    if poi_id and locale:
+        file_path = AUDIO_ROOT / poi_id / f'{locale}.mp3'
+        if file_path.is_file() and file_path.stat().st_size > 0:
+            return f'/audio/{poi_id}/{locale}.mp3'
+    return None
 
 
 def public_poi(record, locales=None):
@@ -61,9 +73,11 @@ def public_poi(record, locales=None):
     default = record.get('content', {}).get('en', {})
     for locale in sorted(requested):
         source = record.get('content', {}).get(locale, {})
-        audio = source if source.get('audio_url') else default
+        has_own = bool(source.get('audio_url')) or (AUDIO_ROOT / record['poi_id'] / f'{locale}.mp3').is_file()
+        audio = source if has_own else default
+        audio_locale = locale if has_own else 'en'
         localized[locale] = {key: source.get(key) or default.get(key) for key in ('name', 'address', 'description', 'introduction', 'text', 'updated_at')}
-        localized[locale].update(audio_url=media_url(audio.get('audio_url')), audio_sha256=audio.get('audio_sha256'), audio_fallback_locale='en' if audio is default and locale != 'en' else None)
+        localized[locale].update(audio_url=media_url(audio.get('audio_url'), record['poi_id'], audio_locale), audio_sha256=audio.get('audio_sha256'), audio_fallback_locale='en' if audio is default and locale != 'en' else None)
     location = record['location']
     if location.get('type') == 'Point':
         longitude, latitude = location['coordinates']
@@ -181,27 +195,249 @@ class AudioRequest(BaseModel):
 
 
 @router.post('/audio/synthesize')
-def available_audio(body: AudioRequest):
-    result = poi_result(find_poi(body.poi_id), body.target_locale)
-    content = result['poi']['content'].get(body.target_locale, {})
-    if not content.get('audio_url'):
-        fail(404, 'AUDIO_NOT_READY', 'Audio chưa sẵn sàng. Quản trị viên cần tạo hoặc tải MP3 lên.')
-    return {'status': 'ready', 'audio_url': content['audio_url'], 'audio_sha256': content.get('audio_sha256'), 'audio_fallback_locale': content.get('audio_fallback_locale')}
+def available_audio(body: AudioRequest, response: Response):
+    # 1. Kiểm tra POI và ngôn ngữ
+    find_poi(body.poi_id)
 
+    if body.target_locale not in active_languages():
+        fail(
+            422,
+            'LANGUAGE_NOT_ACTIVE',
+            'Language is not active.'
+        )
+
+    with database.transaction():
+        with database.connection() as connection, connection.cursor() as cursor:
+
+            # 2. Khóa POI để tránh hai request đồng thời tạo task trùng
+            cursor.execute(
+                """
+                SELECT p.id
+                FROM poi p
+                JOIN zone z ON z.id = p.zone_id
+                WHERE p.id = %s
+                  AND p.status = 'active'
+                  AND p.is_archived = FALSE
+                  AND z.is_active = TRUE
+                FOR UPDATE
+                """,
+                (body.poi_id,)
+            )
+
+            if not cursor.fetchone():
+                fail(404, 'POI_NOT_FOUND', 'POI not found or inactive.')
+
+            # 3. Kiểm tra nội dung tiếng Anh làm nguồn dịch
+            cursor.execute(
+                """
+                SELECT name, text
+                FROM poi_content
+                WHERE poi_id = %s
+                  AND language_code = 'en'
+                LIMIT 1
+                """,
+                (body.poi_id,)
+            )
+            source_content = cursor.fetchone()
+
+            if (
+                not source_content
+                or not source_content['name']
+                or not source_content['text']
+            ):
+                fail(
+                    422,
+                    'SOURCE_CONTENT_NOT_FOUND',
+                    'English content is required to generate audio.'
+                )
+
+            # 4. Kiểm tra bản ghi nội dung ngôn ngữ đích
+            cursor.execute(
+                """
+                SELECT audio_url, audio_sha256, audio_source
+                FROM poi_content
+                WHERE poi_id = %s
+                  AND language_code = %s
+                LIMIT 1
+                """,
+                (body.poi_id, body.target_locale)
+            )
+            target_content = cursor.fetchone()
+
+            if not target_content:
+                fail(
+                    422,
+                    'TARGET_CONTENT_NOT_FOUND',
+                    'Target language content record is required.'
+                )
+
+            # 5. Audio đã sẵn sàng thì không tạo task
+            if target_content['audio_url']:
+                return {
+                    'status': 'ready',
+                    'audio_url': target_content['audio_url'],
+                    'audio_sha256': target_content['audio_sha256'],
+                }
+
+            # 6. Tìm task đang hoạt động
+            cursor.execute(
+                """
+                SELECT id, state
+                FROM audio_tasks
+                WHERE poi_id = %s
+                  AND language_code = %s
+                  AND state IN ('QUEUED', 'PROCESSING')
+                LIMIT 1
+                FOR UPDATE
+                """,
+                (body.poi_id, body.target_locale)
+            )
+            task = cursor.fetchone()
+
+            if task:
+                task_id = task['id']
+
+                # Ưu tiên task nếu vẫn đang chờ
+                if task['state'] == 'QUEUED':
+                    cursor.execute(
+                        """
+                        UPDATE audio_tasks
+                        SET options = JSON_SET(
+                            COALESCE(options, JSON_OBJECT()),
+                            '$.priority',
+                            1
+                        )
+                        WHERE id = %s
+                        """,
+                        (task_id,)
+                    )
+
+            else:
+                # 7. Tạo task mới
+                task_id = str(uuid4())
+
+                cursor.execute(
+                    """
+                    INSERT INTO audio_tasks (
+                        id,
+                        poi_id,
+                        language_code,
+                        state,
+                        progress,
+                        retry_count,
+                        options,
+                        created_at
+                    )
+                    VALUES (
+                        %s,
+                        %s,
+                        %s,
+                        'QUEUED',
+                        0,
+                        0,
+                        %s,
+                        UTC_TIMESTAMP(3)
+                    )
+                    """,
+                    (
+                        task_id,
+                        body.poi_id,
+                        body.target_locale,
+                        json.dumps({
+                            'retranslate': False,
+                            'replace_uploaded_audio': False,
+                            'priority': 1,
+                        }),
+                    )
+                )
+
+    response.status_code = 202
+
+    return {
+        'task_id': task_id,
+        'status': 'queued',
+        'poll_after_ms': 1500,
+    }
 
 @router.get('/audio/{poi_id}/{locale}.mp3')
-def audio_file(poi_id: str, locale: str):
-    result = available_audio(AudioRequest(poi_id=poi_id, target_locale=locale))
-    return RedirectResponse(result['audio_url'], status_code=307)
+def audio_file(
+    poi_id: str,
+    locale: str,
+    if_none_match: str | None = Header(
+        default=None,
+        alias='If-None-Match'
+    )
+):
+    # Kiểm tra và chuẩn hóa đường dẫn
+    file_path = resolve_safe_path(
+        AUDIO_ROOT,
+        f'{poi_id}/{locale}.mp3'
+    )
+
+    if not file_path.is_file():
+        fail(404, 'AUDIO_NOT_FOUND', 'Audio file not found.')
+
+    # Tính SHA-256 để tạo ETag
+    file_hash = hashlib.sha256(file_path.read_bytes()).hexdigest()
+    etag = f'"{file_hash}"'
+
+    headers = {
+        'ETag': etag,
+        'Cache-Control': 'public, no-cache',
+    }
+
+    # Trình phát đã có phiên bản mới nhất thì không gửi lại file
+    if if_none_match == etag:
+        return Response(
+            status_code=304,
+            headers=headers
+        )
+
+    return FileResponse(
+        file_path,
+        media_type='audio/mpeg',
+        headers=headers
+    )
 
 
 @router.get('/audio/tasks/{task_id}')
 def audio_task(task_id: str):
-    record = query('SELECT id,poi_id,state,progress FROM audio_tasks WHERE id=%s', (task_id,), one=True)
+    try:
+        UUID(task_id)
+    except ValueError:
+        fail(404, 'TASK_NOT_FOUND', 'Audio task not found.')
+
+    record = query(
+        """
+        SELECT
+            t.id,
+            t.state,
+            t.progress,
+            pc.audio_url,
+            pc.audio_sha256
+        FROM audio_tasks t
+        LEFT JOIN poi_content pc
+            ON pc.poi_id = t.poi_id
+           AND pc.language_code = t.language_code
+        WHERE t.id = %s
+        LIMIT 1
+        """,
+        (task_id,),
+        one=True
+    )
+
     if not record:
-        fail(404, 'NOT_FOUND', 'Không tìm thấy tác vụ.')
-    find_poi(record['poi_id'])
-    return {'task_id': record['id'], 'state': record['state'], 'progress': record['progress']}
+        fail(404, 'TASK_NOT_FOUND', 'Audio task not found.')
+
+    completed = record['state'] == 'COMPLETED'
+
+    return {
+        'task_id': record['id'],
+        'status': record['state'].lower(),
+        'progress': record['progress'],
+        'audio_url': record['audio_url'] if completed else None,
+        'audio_sha256': record['audio_sha256'] if completed else None,
+    }
 
 
 @router.get('/offline-packs')

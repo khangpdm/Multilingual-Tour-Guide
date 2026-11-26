@@ -11,7 +11,18 @@ async def lifespan(app):
     database.initialize()
     initialize_auth()
     with database.connection() as connection, connection.cursor() as cursor:
-        cursor.execute("UPDATE audio_tasks SET state='FAILED',error='Server restarted. Retry this task.',finished_at=UTC_TIMESTAMP(3) WHERE state IN ('QUEUED','PROCESSING')")
+        cursor.execute(
+            """
+            UPDATE audio_tasks
+            SET
+                state = 'QUEUED',
+                progress = 0,
+                started_at = NULL,
+                finished_at = NULL,
+                error = NULL
+            WHERE state = 'PROCESSING'
+            """
+        )
         cursor.execute("UPDATE offline_pack_releases SET status='failed',error='Server restarted. Create a new version.' WHERE status='building'")
         cursor.execute("UPDATE offline_pack_languages SET status='failed' WHERE status='building'")
     seed_admin()

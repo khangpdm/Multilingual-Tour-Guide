@@ -1,4 +1,6 @@
 import { assetUrl, httpGet } from './httpClient';
+import { readOfflinePackManifests } from './offlinePackService';
+import { File } from 'expo-file-system';
 
 export interface POI {
   id: string;
@@ -14,12 +16,13 @@ export interface POI {
   zoneId?: string;
   qrCode?: string;
   audioUrls?: Record<string, string>;
+  geofence_radius_m: number;
 }
 
 export interface PublicPOI {
   poi_id: string;
   zone_id: string;
-  qr_code?: string;
+  qr_code?: string | null;
   category: string;
   location: { lat: number; lng: number };
   images: string[];
@@ -35,6 +38,36 @@ export interface PublicPOI {
       audio_url?: string | null;
     }
   >;
+  geofence_radius_m: number;
+}
+
+export async function fetchOfflinePOIs(zoneId: string, language: string): Promise<POI[]> {
+  const pack = await readOfflinePackManifests(zoneId, language);
+  if (!pack) return [];
+  const localizedById = new Map<string, any>(
+    (pack.localized.content || []).map((item: any) => [item.poi_id, item])
+  );
+  return (pack.common.pois || []).map((item: any) => {
+    const content = localizedById.get(item.poi_id) || {};
+    const image = item.cover_image || item.images?.[0];
+    const imageUri = image?.startsWith('assets/')
+      ? new File(pack.commonRoot, image.slice('assets/'.length)).uri
+      : image;
+    return {
+      id: item.poi_id,
+      zoneId: item.zone_id,
+      name: { [language]: content.name || item.name || item.poi_id },
+      description: { [language]: content.text || '' },
+      ttsScript: { [language]: content.text || '' },
+      category: CATEGORY_ALIASES[item.category] || 'landmark',
+      address: { [language]: content.address || null },
+      lat: item.location?.lat ?? 0,
+      lng: item.location?.lng ?? 0,
+      geofence_radius_m: item.geofence_radius_m,
+      coverImage: imageUri || 'https://images.unsplash.com/photo-1583417319070-4a69db38a482',
+      mapLink: item.map_link,
+    };
+  });
 }
 
 const CATEGORY_ALIASES: Record<string, string> = {
@@ -55,6 +88,7 @@ export function mapPOI(item: PublicPOI): POI {
   const scripts: Record<string, string> = {};
   const addresses: Record<string, string | null> = {};
   const audioUrls: Record<string, string> = {};
+
   for (const [locale, content] of Object.entries(item.content)) {
     names[locale] = content.name || item.content.en?.name || '';
     descriptions[locale] = content.introduction || content.description || content.text || '';
@@ -62,10 +96,11 @@ export function mapPOI(item: PublicPOI): POI {
     addresses[locale] = content.address || null;
     audioUrls[locale] = assetUrl(content.audio_url);
   }
+
   return {
     id: item.poi_id,
     zoneId: item.zone_id,
-    qrCode: item.qr_code,
+    qrCode: item.qr_code ?? undefined,
     name: names,
     description: descriptions,
     ttsScript: scripts,
@@ -74,7 +109,8 @@ export function mapPOI(item: PublicPOI): POI {
     category: CATEGORY_ALIASES[item.category] || 'landmark',
     lat: item.location.lat,
     lng: item.location.lng,
-    coverImage: assetUrl(item.cover_image || item.images[0]),
+    geofence_radius_m: item.geofence_radius_m,
+    coverImage: assetUrl(item.cover_image || item.images?.[0] || null),
   };
 }
 
