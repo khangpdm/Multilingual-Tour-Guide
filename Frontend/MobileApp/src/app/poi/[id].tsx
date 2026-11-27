@@ -6,8 +6,10 @@ import { useApp } from '@/store/AppContext';
 
 export default function POIDetailRoute() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const { language, activeTab, setActiveTab } = useApp();
+  const { id } = useLocalSearchParams<{ id?: string | string[] }>();
+  const { language } = useApp();
+
+  const poiId = Array.isArray(id) ? id[0] : id;
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -17,9 +19,13 @@ export default function POIDetailRoute() {
     }
   };
 
+  if (!poiId) {
+    return null;
+  }
+
   return (
     <SafeAreaView className="flex-1 bg-slate-50">
-      <POIDetailScreen key={`${id}:${language}`} poiId={id} onBack={handleBack} />
+      <POIDetailScreen key={`${poiId}:${language}`} poiId={poiId} onBack={handleBack} />
     </SafeAreaView>
   );
 }

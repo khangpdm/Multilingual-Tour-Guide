@@ -6,11 +6,9 @@ import Mapbox, {
   FillLayer,
   Images,
   LineLayer,
-  LocationPuck,
   MapView,
   ShapeSource,
   SymbolLayer,
-  UserLocation,
 } from '@rnmapbox/maps';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
@@ -33,11 +31,9 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
     language,
     setSelectedMapPOIId,
     selectedCategory,
-    setUserLocation,
     hasFollowed,
     setHasFollowed,
     userCoordinates,
-    setUserCoordinates,
     pois,
   } = useApp();
 
@@ -59,10 +55,16 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
   }, []);
 
   useEffect(() => {
-    if (mapReady) {
-      void Mapbox.requestAndroidLocationPermissions();
-    }
-  }, [mapReady]);
+    if (!mapReady || !userCoordinates || hasFollowed) return;
+
+    cameraRef.current?.setCamera({
+      centerCoordinate: userCoordinates,
+      zoomLevel: 15,
+      animationDuration: 1000,
+    });
+
+    setHasFollowed(true);
+  }, [mapReady, userCoordinates, hasFollowed, setHasFollowed]);
 
   const filteredPois = useMemo(() => {
     return selectedCategory === 'all' ? pois : pois.filter((p) => p.category === selectedCategory);
@@ -131,25 +133,45 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
     };
   }, [filteredPois]);
 
-  const handleUserLocationUpdate = (location: Mapbox.Location) => {
-    if (!location?.coords) return;
-
-    const { longitude, latitude } = location.coords;
-    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return;
-
-    const coords: [number, number] = [longitude, latitude];
-    setUserCoordinates(coords);
-    setUserLocation(latitude, longitude);
-
-    if (!hasFollowed) {
-      cameraRef.current?.setCamera({
-        centerCoordinate: coords,
-        zoomLevel: 15,
-        animationDuration: 1000,
-      });
-      setHasFollowed(true);
+  const userLocationGeoJSON = useMemo<GeoJSON.FeatureCollection>(() => {
+    if (!userCoordinates) {
+      return {
+        type: 'FeatureCollection',
+        features: [],
+      };
     }
-  };
+
+    const [lng, lat] = userCoordinates;
+
+    if (
+      !Number.isFinite(lng) ||
+      !Number.isFinite(lat) ||
+      lng < -180 ||
+      lng > 180 ||
+      lat < -90 ||
+      lat > 90
+    ) {
+      return {
+        type: 'FeatureCollection',
+        features: [],
+      };
+    }
+
+    return {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          id: 'user-location',
+          properties: {},
+          geometry: {
+            type: 'Point',
+            coordinates: [lng, lat],
+          },
+        },
+      ],
+    };
+  }, [userCoordinates]);
 
   const handleReCenter = () => {
     if (userCoordinates) {
@@ -238,8 +260,27 @@ const Mapsection: React.FC<MapsectionProps> = ({ onMapTouch }) => {
             userCoordinates ? { centerCoordinate: userCoordinates, zoomLevel: 14 } : undefined
           }
         />
-        <UserLocation onUpdate={handleUserLocationUpdate} />
-        <LocationPuck puckBearingEnabled puckBearing="heading" pulsing={{ isEnabled: true }} />
+
+        <ShapeSource id="userLocationSource" shape={userLocationGeoJSON}>
+          <CircleLayer
+            id="userLocationOuter"
+            style={{
+              circleRadius: 13,
+              circleColor: '#0D9488',
+              circleOpacity: 0.18,
+            }}
+          />
+
+          <CircleLayer
+            id="userLocationInner"
+            style={{
+              circleRadius: 6,
+              circleColor: '#0D9488',
+              circleStrokeWidth: 2,
+              circleStrokeColor: '#FFFFFF',
+            }}
+          />
+        </ShapeSource>
 
         <Images images={{ pin }} />
 

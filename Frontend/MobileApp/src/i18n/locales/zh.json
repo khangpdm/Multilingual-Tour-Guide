@@ -82,6 +82,12 @@
       }
     },
     "gpsNote": "应用无法超越设备硬件能力提升 GPS 精度。",
+    "gpsPermission": "位置访问权限",
+    "gpsPermissionGranted": "已允许访问位置。应用运行期间将自动进行 GPS 定位。",
+    "gpsPermissionRequired": "使用 GPS 自动功能需要允许访问位置信息。",
+    "gpsPermissionDenied": "位置访问权限已被拒绝。您可以在设备设置中重新启用。",
+    "grantGpsPermission": "允许访问位置",
+    "locationServicesDisabled": "此设备的位置服务已关闭。",
     "wifiOnly": "仅通过 Wi-Fi 下载",
     "saveMobileData": "节省移动数据",
     "downloadedStorage": "已下载容量",

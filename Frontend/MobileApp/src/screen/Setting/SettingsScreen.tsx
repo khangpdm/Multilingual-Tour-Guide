@@ -25,6 +25,8 @@ export default function SettingsScreen() {
     setVoice,
     speechRate,
     setSpeechRate,
+    gpsPermissionStatus,
+    requestGpsPermission,
   } = useApp();
 
   return (
@@ -48,6 +50,8 @@ export default function SettingsScreen() {
         onRadiusChange={setTriggerRadius}
         locationMode={locationMode}
         onLocationModeChange={setLocationMode}
+        gpsPermissionStatus={gpsPermissionStatus}
+        onRequestGpsPermission={requestGpsPermission}
       />
 
       <SettingSectionTitle>{t('settings.voice').toLocaleUpperCase()}</SettingSectionTitle>

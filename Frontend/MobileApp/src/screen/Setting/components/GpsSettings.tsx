@@ -1,5 +1,5 @@
 import { IconCheck } from '@/components/Icons';
-import { LocationMode } from '@/store/AppContext';
+import { GpsPermissionStatus, LocationMode } from '@/store/AppContext';
 import React from 'react';
 import { PanResponder, Pressable, Text, View } from 'react-native';
 import SettingsToggle from './SettingsToggle';
@@ -17,6 +17,8 @@ export default function GpsSettings({
   onRadiusChange,
   locationMode,
   onLocationModeChange,
+  gpsPermissionStatus,
+  onRequestGpsPermission,
 }: {
   autoPlay: boolean;
   onAutoPlayChange: (value: boolean) => void;
@@ -24,6 +26,8 @@ export default function GpsSettings({
   onRadiusChange: (value: number) => void;
   locationMode: LocationMode;
   onLocationModeChange: (mode: LocationMode) => void;
+  gpsPermissionStatus: GpsPermissionStatus;
+  onRequestGpsPermission: () => Promise<boolean>;
 }) {
   const { t } = useTranslation();
   const [sliderWidth, setSliderWidth] = React.useState(0);

@@ -9,6 +9,7 @@ import {
 import { useApp } from '@/store/AppContext';
 import React, { useMemo } from 'react';
 import { FlatList, Image, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { getImageSource } from '@/utils/imageSource';
 
 const CATEGORIES = ['all', 'landmark', 'museum', 'religious', 'architecture', 'park', 'food'];
 
@@ -86,7 +87,11 @@ export default function ExploreScreen() {
         className="w-full flex-row items-start gap-3 p-3 mb-3 bg-white rounded-2xl border border-gray-200"
       >
         <View className="w-24 h-28 flex-none overflow-hidden rounded-xl bg-gray-100 relative">
-          <Image source={{ uri: poi.coverImage }} className="w-full h-full" resizeMode="cover" />
+          <Image
+            source={getImageSource(poi.coverImage)}
+            className="w-full h-full"
+            resizeMode="cover"
+          />
           {downloaded && (
             <View className="absolute top-1.5 right-1.5 w-5 h-5 bg-teal-500 rounded-full flex items-center justify-center">
               <IconCheck size={11} color="#ffffff" />

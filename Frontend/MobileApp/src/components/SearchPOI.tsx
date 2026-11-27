@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { getImageSource } from '@/utils/imageSource';
 
 interface SearchPOIProps {
   homeSearch: string;
@@ -110,7 +111,7 @@ export default function SearchPOI({
                   className="flex-row items-center gap-3 border-b border-gray-50 px-3 py-2.5 active:bg-gray-50"
                 >
                   <Image
-                    source={{ uri: p.coverImage }}
+                    source={getImageSource(p.coverImage)}
                     className="h-8 w-8 rounded-lg bg-gray-200"
                   />
                   <View className="flex-1">

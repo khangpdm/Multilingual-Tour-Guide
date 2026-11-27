@@ -82,6 +82,12 @@
       }
     },
     "gpsNote": "Ứng dụng không thể cải thiện độ chính xác GPS vượt quá khả năng phần cứng của thiết bị.",
+    "gpsPermission": "Quyền truy cập vị trí",
+    "gpsPermissionGranted": "Đã cấp quyền vị trí. GPS sẽ tự động theo dõi khi ứng dụng hoạt động.",
+    "gpsPermissionRequired": "Cần cấp quyền vị trí để sử dụng tính năng GPS tự động.",
+    "gpsPermissionDenied": "Quyền vị trí chưa được cấp. Bạn có thể cấp quyền trong cài đặt thiết bị.",
+    "grantGpsPermission": "Cấp quyền vị trí",
+    "locationServicesDisabled": "Dịch vụ định vị trên thiết bị đang tắt.",
     "wifiOnly": "Chỉ tải qua Wi-Fi",
     "saveMobileData": "Tiết kiệm dữ liệu di động",
     "downloadedStorage": "Dung lượng đã tải",

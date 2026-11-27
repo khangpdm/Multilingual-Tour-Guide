@@ -4,6 +4,7 @@ import { POI } from '@/services/poiService';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { getImageSource } from '@/utils/imageSource';
 
 interface NearbyPOIProps {
   nearbyPOIs: POI[];
@@ -52,7 +53,7 @@ export default function NearbyPOI({
                 className="flex-row items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-2 py-1.5 active:bg-orange-100"
               >
                 <Image
-                  source={{ uri: p.coverImage }}
+                  source={getImageSource(p.coverImage)}
                   className="h-10 w-10 rounded-lg bg-gray-200"
                 />
                 <View>

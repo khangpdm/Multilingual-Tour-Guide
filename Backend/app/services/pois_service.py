@@ -56,27 +56,45 @@ def public_poi(document: dict, active_languages: set[str],
         "updated_at": to_iso(document.get("updated_at")),
     }
 
-async def find_active_poi(pool, field: str, value: str) -> Optional[Dict[str, Any]]:
-    
+async def find_active_poi(
+    pool,
+    field: str,
+    value: str
+) -> Optional[Dict[str, Any]]:
+
     if field not in {"id", "qr_code"}:
         raise ValueError("Invalid field for POI lookup")
 
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
             sql_poi = f"""
-                SELECT 
-                    id, zone_id, category, status, radius, qr_code, images, updated_at,
-                    ST_X(location) as lng, ST_Y(location) as lat
-                FROM poi 
-                WHERE {field} = %s AND status = 'active'
+                SELECT
+                    p.id,
+                    p.zone_id,
+                    p.category,
+                    p.status,
+                    p.radius,
+                    p.qr_code,
+                    p.images,
+                    p.updated_at,
+                    ST_X(p.location) AS lng,
+                    ST_Y(p.location) AS lat
+                FROM poi p
+                INNER JOIN zone z ON z.id = p.zone_id
+                WHERE p.{field} = %s
+                  AND p.status = 'active'
+                  AND p.is_archived = FALSE
+                  AND z.is_active = TRUE
             """
+
             await cursor.execute(sql_poi, (value,))
             poi_row = await cursor.fetchone()
-            
+
             if not poi_row:
                 return None
-            
+
             poi_id = poi_row[0]
+
             poi_data = {
                 "poi_id": poi_id,
                 "zone_id": poi_row[1],
@@ -87,22 +105,30 @@ async def find_active_poi(pool, field: str, value: str) -> Optional[Dict[str, An
                 "images": poi_row[6] if isinstance(poi_row[6], list) else [],
                 "updated_at": poi_row[7],
                 "location": {
-                    "lng": poi_row[9],
-                    "lat": poi_row[8]
+                    "lng": poi_row[8],
+                    "lat": poi_row[9]
                 }
             }
 
             sql_content = """
-                SELECT 
-                    language_code, name, address, description, text, 
-                    audio_url, audio_sha256, updated_at
+                SELECT
+                    language_code,
+                    name,
+                    address,
+                    description,
+                    text,
+                    audio_url,
+                    audio_sha256,
+                    updated_at
                 FROM poi_content
                 WHERE poi_id = %s
             """
+
             await cursor.execute(sql_content, (poi_id,))
             content_rows = await cursor.fetchall()
-            
+
             content_dict = {}
+
             for crow in content_rows:
                 lang_code = crow[0]
                 content_dict[lang_code] = {
@@ -114,6 +140,7 @@ async def find_active_poi(pool, field: str, value: str) -> Optional[Dict[str, An
                     "audio_sha256": crow[6],
                     "updated_at": crow[7]
                 }
-            
+
             poi_data["content"] = content_dict
+
             return poi_data

@@ -82,6 +82,12 @@
       }
     },
     "gpsNote": "GPSの精度は端末のハードウェア性能を超えて向上できません。",
+    "gpsPermission": "位置情報の権限",
+    "gpsPermissionGranted": "位置情報へのアクセスが許可されています。アプリの使用中はGPSが自動的に追跡されます。",
+    "gpsPermissionRequired": "GPSの自動機能を使用するには位置情報へのアクセスが必要です。",
+    "gpsPermissionDenied": "位置情報へのアクセスが拒否されています。端末の設定から許可できます。",
+    "grantGpsPermission": "位置情報を許可",
+    "locationServicesDisabled": "この端末では位置情報サービスが無効になっています。",
     "wifiOnly": "Wi-Fi接続時のみダウンロード",
     "saveMobileData": "モバイルデータを節約",
     "downloadedStorage": "ダウンロード済み容量",

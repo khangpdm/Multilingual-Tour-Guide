@@ -82,6 +82,12 @@
       }
     },
     "gpsNote": "기기의 하드웨어 성능을 넘어 GPS 정확도를 높일 수 없습니다.",
+    "gpsPermission": "위치 정보 권한",
+    "gpsPermissionGranted": "위치 정보 접근이 허용되었습니다. 앱이 활성화된 동안 GPS가 자동으로 추적됩니다.",
+    "gpsPermissionRequired": "GPS 자동 기능을 사용하려면 위치 정보 접근 권한이 필요합니다.",
+    "gpsPermissionDenied": "위치 정보 접근이 거부되었습니다. 기기 설정에서 권한을 허용할 수 있습니다.",
+    "grantGpsPermission": "위치 정보 접근 허용",
+    "locationServicesDisabled": "이 기기의 위치 서비스가 꺼져 있습니다.",
     "wifiOnly": "Wi-Fi에서만 다운로드",
     "saveMobileData": "모바일 데이터 절약",
     "downloadedStorage": "다운로드 용량",

@@ -2,7 +2,8 @@ import { DEMO_USER_LOCATIONS, Language, POIS } from '@/data/pois';
 import { fetchActiveLanguages, LanguageItem } from '@/services/languageService';
 import { fetchPOIs, fetchOfflinePOIs, POI } from '@/services/poiService';
 import { useRouter } from 'expo-router';
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import * as Location from 'expo-location';
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { Alert } from 'react-native';
 import {
   requestSynthesizeAudio,
@@ -21,6 +22,14 @@ export type DownloadStatus = 'none' | 'downloading' | 'done' | 'failed';
 export type LocationMode = 'battery' | 'balanced' | 'accuracy';
 export type VoiceId = 'an' | 'hoai-my' | 'nam-minh';
 export type DemoLocation = 'near' | 'far';
+export type GpsPermissionStatus = 'unknown' | 'granted' | 'denied' | 'undetermined';
+
+export interface UserLocation {
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+  timestamp: number;
+}
 
 interface AppContextValue {
   // Navigation
@@ -40,6 +49,12 @@ interface AppContextValue {
   setPoiList: React.Dispatch<React.SetStateAction<POI[]>>;
   poiLoadError: boolean;
   reloadPOIs: () => void;
+  gpsLocation: UserLocation | null;
+  updateGpsLocation: (location: UserLocation) => void;
+
+  gpsPermissionStatus: GpsPermissionStatus;
+  setGpsPermissionStatus: (status: GpsPermissionStatus) => void;
+  requestGpsPermission: () => Promise<boolean>;
 
   // Language
   supportedLanguages: LanguageItem[];
@@ -94,6 +109,7 @@ interface AppContextValue {
   stopPlayback: () => Promise<void>;
   playingPOIId: string | null;
   isPlaying: boolean;
+  isPlaybackBusy: boolean;
   playerProgress: number;
   speechRate: number;
   setSpeechRate: (rate: number) => void;
@@ -154,44 +170,112 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // User location / Geofencing
   const [hasFollowed, setHasFollowed] = useState(false);
+
   const [userCoordinates, setUserCoordinates] = useState<[number, number] | null>(null);
+
+  // GPS thật, không chứa tọa độ demo
+  const [gpsLocation, setGpsLocation] = useState<UserLocation | null>(null);
+
+  const [gpsPermissionStatus, setGpsPermissionStatus] = useState<GpsPermissionStatus>('unknown');
+
+  const requestGpsPermission = useCallback(async (): Promise<boolean> => {
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+
+      setGpsPermissionStatus(permission.status);
+
+      return permission.status === 'granted';
+    } catch (error) {
+      console.warn('[GPS] Không thể yêu cầu quyền vị trí:', error);
+      return false;
+    }
+  }, []);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [demoLocation, setDemoLocationState] = useState<DemoLocation>('near');
   const [activationRadius, setActivationRadius] = useState(1000); // Mặc định 1000m
   const [triggerRadius, setTriggerRadius] = useState(100);
-  const [locationMode, setLocationMode] = useState<LocationMode>('balanced');
+  const [locationMode, setLocationMode] = useState<LocationMode>('accuracy');
 
   const initialLocation = DEMO_USER_LOCATIONS?.near || { lat: 10.7769, lng: 106.7009 };
   const [userLat, setUserLat] = useState<number>(initialLocation.lat);
   const [userLng, setUserLng] = useState<number>(initialLocation.lng);
 
-  // Cập nhật vị trí GPS thực từ Mapbox UserLocation
+  // Cập nhật vị trí demo; GPS thực đi qua updateGpsLocation.
   const setDemoLocation = (mode: DemoLocation) => {
+    const location = DEMO_USER_LOCATIONS?.[mode];
+
+    if (!location) return;
+
     setDemoLocationState(mode);
     setIsDemoMode(true);
 
-    if (DEMO_USER_LOCATIONS?.[mode]) {
-      setUserLat(DEMO_USER_LOCATIONS[mode].lat);
-      setUserLng(DEMO_USER_LOCATIONS[mode].lng);
-    }
+    // Xóa dữ liệu GPS thật để tránh sử dụng nhầm tọa độ cũ.
+    setGpsLocation(null);
+
+    // Cập nhật vị trí hiển thị trên bản đồ.
+    setUserLat(location.lat);
+    setUserLng(location.lng);
+    setUserCoordinates([location.lng, location.lat]);
+
+    setHasFollowed(false);
   };
 
   const setUserLocation = (lat: number, lng: number) => {
-    if (!isDemoMode) {
-      setUserLat(lat);
-      setUserLng(lng);
-    }
+    if (isDemoMode) return;
+
+    setUserLat(lat);
+    setUserLng(lng);
+    setUserCoordinates([lng, lat]);
   };
 
-  const openPOI = (id: string) => {
-    setActivePOIId(id);
-    router.push({
-      pathname: '/poi/[id]',
-      params: { id },
-    });
-  };
+  const updateGpsLocation = useCallback(
+    (location: UserLocation) => {
+      if (isDemoMode) return;
+
+      const { latitude, longitude, accuracy, timestamp } = location;
+
+      if (
+        !Number.isFinite(latitude) ||
+        !Number.isFinite(longitude) ||
+        latitude < -90 ||
+        latitude > 90 ||
+        longitude < -180 ||
+        longitude > 180 ||
+        (accuracy !== null && (!Number.isFinite(accuracy) || accuracy < 0)) ||
+        !Number.isFinite(timestamp)
+      ) {
+        return;
+      }
+
+      const normalizedLocation: UserLocation = {
+        latitude,
+        longitude,
+        accuracy,
+        timestamp,
+      };
+
+      setGpsLocation(normalizedLocation);
+
+      setUserLat(latitude);
+      setUserLng(longitude);
+      setUserCoordinates([longitude, latitude]);
+    },
+    [isDemoMode]
+  );
 
   const [showMiniPlayer, setShowMiniPlayer] = useState(false);
+
+  const openPOI = useCallback(
+    (id: string) => {
+      setActivePOIId(id);
+      setShowMiniPlayer(false);
+      router.push({
+        pathname: '/poi/[id]',
+        params: { id },
+      });
+    },
+    [router]
+  );
 
   const closePOI = () => {
     setActivePOIId(null);
@@ -205,8 +289,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [playerProgress, setPlayerProgress] = useState(0);
   const [speechRate, setSpeechRateState] = useState(1);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isPlaybackBusy, setIsPlaybackBusy] = useState(false);
   // --- EXPO-AUDIO PLAYER & FALLBACK LOGIC ---
   const audioPlayerRef = useRef<AudioPlayer | null>(null);
+  const playbackRequestRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -269,6 +355,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
               if (status.didJustFinish) {
                 setIsPlaying(false);
+                setIsPlaybackBusy(false);
                 setPlayerProgress(100);
               }
             }
@@ -304,85 +391,135 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return false;
   };
 
-  const startPlayback = async (poiId: string) => {
+  const startPlayback = async (poiId: string): Promise<void> => {
+    if (playbackRequestRef.current) {
+      console.warn('[Audio] Đang có yêu cầu phát audio khác. Bỏ qua:', poiId);
+      return;
+    }
+
+    playbackRequestRef.current = true;
+    setIsPlaybackBusy(true);
+
     const targetLang = language;
+    let playbackSucceeded = false;
+
     setPlayingPOIId(poiId);
     setShowMiniPlayer(true);
     setPlayerProgress(0);
 
-    const selected = pois.find((item) => item.id === poiId);
-    const selectedAudio = selected?.audioUrls?.[targetLang] || selected?.audioUrls?.en;
-    if (selectedAudio?.startsWith('file://') && (await playAudioUrl(selectedAudio))) return;
-
-    // BƯỚC 1: Ưu tiên audio đã tải về thiết bị.
     try {
-      const localAudioUri = await findOfflineAudioUri(poiId, targetLang);
+      const selected = pois.find((item) => item.id === poiId);
+      const selectedAudio = selected?.audioUrls?.[targetLang] || selected?.audioUrls?.en;
 
-      if (localAudioUri) {
-        console.log(`[OfflineAudio] Phát audio local: ${localAudioUri}`);
-
-        const successLocal = await playAudioUrl(localAudioUri);
-
-        if (successLocal) return;
-
-        console.warn('[OfflineAudio] Phát audio local thất bại.');
-      } else {
-        console.log(`[OfflineAudio] Không tìm thấy audio local cho ${poiId}/${targetLang}`);
-      }
-    } catch (error) {
-      console.warn('[OfflineAudio] Lỗi đọc audio local:', error);
-    }
-
-    // Fallback sang Backend.
-    const primaryAudioUrl = getAudioFileUrl(poiId, targetLang);
-
-    console.log(`[Audio] Thử phát URL trực tiếp: ${primaryAudioUrl}`);
-
-    const successCurrent = await playAudioUrl(primaryAudioUrl);
-    if (successCurrent) return;
-
-    // BƯỚC 2: Gọi POST /audio/synthesize
-    console.log(`[Audio Fallback] Chưa có sẵn file [${targetLang}]. Đang gọi API synthesize...`);
-    try {
-      const response = await requestSynthesizeAudio(poiId, targetLang);
-
-      if (response.status === 'ready') {
-        const successReady = await playAudioUrl(
-          resolvedAudioUrl(response.audio_url) || primaryAudioUrl
-        );
-        if (successReady) return;
-      }
-      // Nếu backend đưa vào hàng đợi ("queued") và trả về task_id
-      else if (response.status === 'queued' && response.task_id) {
-        console.log(`[Audio Fallback] Đã xếp hàng task: ${response.task_id}. Đang chờ render...`);
-        const isCompleted = await waitForTaskCompletion(response.task_id);
-
-        if (isCompleted) {
-          const retrySuccess = await playAudioUrl(primaryAudioUrl);
-          if (retrySuccess) return;
+      if (selectedAudio?.startsWith('file://')) {
+        if (await playAudioUrl(selectedAudio)) {
+          playbackSucceeded = true;
+          return;
         }
       }
-    } catch (e) {
-      console.warn('[Audio Fallback] Lỗi khi gọi synthesize hoặc chờ task:', e);
-    }
 
-    // BƯỚC 3: Fallback cuối cùng sang Tiếng Anh ('en') nếu tất cả thất bại
-    if (targetLang !== 'en') {
-      console.log(
-        '[Audio Fallback] Quá trình tạo audio thất bại. Đang chuyển sang phát file tiếng Anh (en) mặc định...'
-      );
-      const fallbackEnUrl = getAudioFileUrl(poiId, 'en');
-      const successEn = await playAudioUrl(fallbackEnUrl);
-      if (successEn) return;
-    }
+      // BƯỚC 1: Ưu tiên audio đã tải về thiết bị.
+      try {
+        const localAudioUri = await findOfflineAudioUri(poiId, targetLang);
 
-    try {
-      const offline = (await loadOfflinePOIs()).find((item) => item.id === poiId);
-      const offlineAudio = offline?.audioUrls?.[targetLang] || offline?.audioUrls?.en;
-      if (offlineAudio && (await playAudioUrl(offlineAudio))) return;
-    } catch {}
-    Alert.alert(i18n.t('detail.audioNarration'), i18n.t('detail.noAudio'));
-    setIsPlaying(false);
+        if (localAudioUri) {
+          console.log(`[OfflineAudio] Phát audio local: ${localAudioUri}`);
+
+          if (await playAudioUrl(localAudioUri)) {
+            playbackSucceeded = true;
+            return;
+          }
+
+          console.warn('[OfflineAudio] Phát audio local thất bại.');
+        } else {
+          console.log(`[OfflineAudio] Không tìm thấy audio local cho ${poiId}/${targetLang}`);
+        }
+      } catch (error) {
+        console.warn('[OfflineAudio] Lỗi đọc audio local:', error);
+      }
+
+      // BƯỚC 2: Fallback sang Backend.
+      const primaryAudioUrl = getAudioFileUrl(poiId, targetLang);
+
+      console.log(`[Audio] Thử phát URL trực tiếp: ${primaryAudioUrl}`);
+
+      if (await playAudioUrl(primaryAudioUrl)) {
+        playbackSucceeded = true;
+        return;
+      }
+
+      // BƯỚC 3: Yêu cầu backend tổng hợp audio.
+      console.log(`[Audio Fallback] Chưa có sẵn file [${targetLang}]. Đang gọi API synthesize...`);
+
+      try {
+        const response = await requestSynthesizeAudio(poiId, targetLang);
+
+        if (response.status === 'ready') {
+          const readyUrl = resolvedAudioUrl(response.audio_url) || primaryAudioUrl;
+
+          if (await playAudioUrl(readyUrl)) {
+            playbackSucceeded = true;
+            return;
+          }
+        } else if (response.status === 'queued' && response.task_id) {
+          console.log(`[Audio Fallback] Đã xếp hàng task: ${response.task_id}. Đang chờ render...`);
+
+          const isCompleted = await waitForTaskCompletion(response.task_id);
+
+          if (isCompleted && (await playAudioUrl(primaryAudioUrl))) {
+            playbackSucceeded = true;
+            return;
+          }
+        }
+      } catch (error) {
+        console.warn('[Audio Fallback] Lỗi khi gọi synthesize hoặc chờ task:', error);
+      }
+
+      // BƯỚC 4: Fallback sang tiếng Anh.
+      if (targetLang !== 'en') {
+        console.log('[Audio Fallback] Đang chuyển sang audio tiếng Anh...');
+
+        const fallbackEnUrl = getAudioFileUrl(poiId, 'en');
+
+        if (await playAudioUrl(fallbackEnUrl)) {
+          playbackSucceeded = true;
+          return;
+        }
+      }
+
+      // BƯỚC 5: Fallback cuối cùng sang Offline Resource.
+      try {
+        const offline = (await loadOfflinePOIs()).find((item) => item.id === poiId);
+
+        const offlineAudio = offline?.audioUrls?.[targetLang] || offline?.audioUrls?.en;
+
+        if (offlineAudio && (await playAudioUrl(offlineAudio))) {
+          playbackSucceeded = true;
+          return;
+        }
+      } catch (error) {
+        console.warn('[OfflineResource] Lỗi đọc audio:', error);
+      }
+
+      // Không tìm được audio phù hợp.
+      Alert.alert(i18n.t('detail.audioNarration'), i18n.t('detail.noAudio'));
+    } catch (error) {
+      console.warn('[Audio] Lỗi không mong đợi khi phát audio:', error);
+
+      Alert.alert(i18n.t('detail.audioNarration'), i18n.t('detail.noAudio'));
+    } finally {
+      // Nếu phát thất bại, giải phóng trạng thái POI đang phát.
+      if (!playbackSucceeded) {
+        setPlayingPOIId((currentId) => (currentId === poiId ? null : currentId));
+        setIsPlaying(false);
+        setIsPlaybackBusy(false);
+        setPlayerProgress(0);
+        setShowMiniPlayer(false);
+      }
+
+      // Luôn giải phóng khóa, kể cả khi return hoặc xảy ra lỗi.
+      playbackRequestRef.current = false;
+    }
   };
 
   const togglePlayback = async () => {
@@ -420,6 +557,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     setPlayingPOIId(null);
     setIsPlaying(false);
+    setIsPlaybackBusy(false);
     setPlayerProgress(0);
     setShowMiniPlayer(false);
   };
@@ -458,7 +596,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (isDemoMode) {
           await Promise.resolve();
           if (!closed) {
-            setPoiList(POIS);
+            const demoPois: POI[] = POIS.map((item) => ({
+              ...item,
+              geofence_radius_m: triggerRadius,
+            }));
+            setPoiList(demoPois);
             setPoiLoadError(false);
           }
           return;
@@ -589,6 +731,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setDemoLocation,
         isDemoMode,
         setIsDemoMode,
+        gpsLocation,
+        updateGpsLocation,
+        gpsPermissionStatus,
+        setGpsPermissionStatus,
+        requestGpsPermission,
 
         // Explore
         exploreSearch,
@@ -614,6 +761,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         stopPlayback,
         playingPOIId,
         isPlaying,
+        isPlaybackBusy,
         playerProgress,
         speechRate,
         setSpeechRate,

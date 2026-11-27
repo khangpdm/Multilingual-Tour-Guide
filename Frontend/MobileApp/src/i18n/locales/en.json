@@ -82,6 +82,12 @@
       }
     },
     "gpsNote": "The app cannot improve GPS accuracy beyond your device hardware.",
+    "gpsPermission": "Location permission",
+    "gpsPermissionGranted": "Location access is enabled. GPS tracking starts automatically while the app is active.",
+    "gpsPermissionRequired": "Location access is required for automatic GPS features.",
+    "gpsPermissionDenied": "Location access was denied. You can enable it in your device settings.",
+    "grantGpsPermission": "Allow location access",
+    "locationServicesDisabled": "Location services are turned off on this device.",
     "wifiOnly": "Download over Wi-Fi only",
     "saveMobileData": "Save mobile data",
     "downloadedStorage": "Downloaded storage",

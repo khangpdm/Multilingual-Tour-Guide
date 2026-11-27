@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Alert, Image, Linking, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-
+import { getImageSource } from '@/utils/imageSource';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -69,6 +69,8 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
       </View>
     );
   }
+
+  const hasCoverImage = typeof poi.coverImage === 'string' && poi.coverImage.trim().length > 0;
 
   const getName = () => {
     if (!poi.name) return t('detail.place');
@@ -158,7 +160,7 @@ export default function POIDetailScreen({ poiId, onBack }: Props) {
     <View className="absolute inset-0 z-50 flex-col overflow-hidden bg-slate-50">
       <View className="relative h-72 shrink-0 bg-gray-200">
         <Image
-          source={{ uri: poi.coverImage }}
+          source={getImageSource(poi.coverImage)}
           accessibilityLabel={name}
           resizeMode="cover"
           className="h-full w-full"

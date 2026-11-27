@@ -82,6 +82,12 @@
       }
     },
     "gpsNote": "L’application ne peut pas améliorer la précision GPS au-delà des capacités de votre appareil.",
+    "gpsPermission": "Autorisation de localisation",
+    "gpsPermissionGranted": "L’accès à la localisation est autorisé. Le GPS est suivi automatiquement lorsque l’application est active.",
+    "gpsPermissionRequired": "L’accès à la localisation est nécessaire pour les fonctions GPS automatiques.",
+    "gpsPermissionDenied": "L’accès à la localisation a été refusé. Vous pouvez l’autoriser dans les paramètres de votre appareil.",
+    "grantGpsPermission": "Autoriser la localisation",
+    "locationServicesDisabled": "Les services de localisation sont désactivés sur cet appareil.",
     "wifiOnly": "Télécharger uniquement en Wi-Fi",
     "saveMobileData": "Économiser les données mobiles",
     "downloadedStorage": "Espace téléchargé",

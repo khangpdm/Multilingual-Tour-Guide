@@ -9,6 +9,7 @@ import { POI } from '@/services/poiService';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Image, Text, TouchableOpacity, View } from 'react-native';
+import { getImageSource } from '@/utils/imageSource';
 
 interface PreviewPOIProps {
   selectedPOI: POI;
@@ -47,7 +48,7 @@ export default function PreviewPOI({
 
       <View className="flex-row gap-3 px-4 pb-4">
         <Image
-          source={{ uri: selectedPOI.coverImage }}
+          source={getImageSource(selectedPOI.coverImage)}
           className="h-16 w-16 rounded-xl bg-gray-100"
         />
 
