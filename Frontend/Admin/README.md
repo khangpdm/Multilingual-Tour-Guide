@@ -26,17 +26,16 @@ cookies will not work with SameSite=Strict. Never put secrets in VITE variables.
 
 ## POI location picker
 
-The POI information form uses a Leaflet map. Click the map or drag the pin,
+The POI information form uses Mapbox GL JS. Click the map or drag the pin,
 then save the form to persist the selected location. The selected zone is
 outlined; points outside its bounding box or polygon are rejected before save
 and remain subject to backend validation. Manual coordinates are available in
 the advanced section for keyboard entry or when map tiles are unavailable.
 The optional current-location button requests browser geolocation only after
 the user clicks it; use it only while physically at the intended POI.
-The basemap loads OpenStreetMap tiles over the Internet and retains attribution.
-Tile images explicitly use `strict-origin` referrers to meet the tile service's
-identification requirement without sending page paths or query tokens. The
-page-wide `no-referrer` policy remains unchanged for other external resources.
+The Mapbox Streets basemap uses WebGL and requires Internet access. Set
+`VITE_MAPBOX_ACCESS_TOKEN` to a public Mapbox token in `.env.local` and restart
+Vite. If the token has URL restrictions, allow the Admin site's origin.
 This editor map is not an offline map or a place-name search service.
 
 ## Notifications

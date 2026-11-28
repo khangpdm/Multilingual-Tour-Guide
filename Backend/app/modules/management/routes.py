@@ -22,7 +22,7 @@ INVITE_DAYS = int(settings.get("ADMIN_INVITE_TTL_DAYS", "7"))
 if INVITE_DAYS < 1:
     raise RuntimeError("ADMIN_INVITE_TTL_DAYS must be positive.")
 
-USER_FIELDS = """id AS user_id,username,email,full_name,role_id,
+USER_FIELDS = """id AS user_id,username,email,full_name,role_id,LOWER(status) AS account_status,
     CASE WHEN status='ACTIVE' AND invite_token_hash IS NOT NULL THEN 'pending_activation'
          WHEN status='ACTIVE' AND EXISTS (
              SELECT 1 FROM auth_account_security AS security WHERE security.user_id=users.id

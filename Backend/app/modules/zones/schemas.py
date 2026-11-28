@@ -1,3 +1,5 @@
+from typing import Annotated
+
 from pydantic import Field, model_validator
 
 from app.schemas.base import Input, partial_model
@@ -19,6 +21,9 @@ class MapRegion(Input):
 
 class ZoneInput(Input):
     name: str = Field(min_length=1, max_length=100)
+    names: dict[Annotated[str, Field(pattern=r"^[a-z]{2,3}(-[A-Z]{2})?$")], Annotated[str, Field(min_length=1, max_length=100)]] | None = Field(default=None, max_length=30)
+    description: str | None = Field(default=None, max_length=2000)
+    cover_image: str | None = Field(default=None, max_length=500)
     map_region: MapRegion
     is_active: bool = True
     boundary: list[tuple[float, float]] | None = Field(default=None, min_length=4, max_length=500)

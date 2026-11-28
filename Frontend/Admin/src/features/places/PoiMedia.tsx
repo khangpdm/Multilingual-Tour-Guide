@@ -7,6 +7,7 @@ import { Empty, Field, Notice, saveBlob } from '../../shared/ui'
 
 export function PoiImages({ poi }: { poi: Poi }) {
   const { can, mode, busy, mutate } = useAdmin()
+  const [unavailableImages, setUnavailableImages] = useState<string[]>([])
 
   const editable = can('poi.edit') && poi.status !== 'archived' && mode === 'live'
   async function upload(file?: File) {
@@ -42,7 +43,9 @@ export function PoiImages({ poi }: { poi: Poi }) {
     <p>{poi.images.length}/10 ảnh · Ảnh đại diện xuất hiện trên thẻ địa điểm và bản xem trước.</p>
     {editable && <Field label="Thêm ảnh JPG PNG WebP tối đa 5 MB"><input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || poi.images.length >= 10} onChange={event => { void upload(event.target.files?.[0]); event.target.value = '' }} /></Field>}
     <div className="admin-image-grid">{poi.images.map((image, index) => <figure key={image} className={image === poi.cover_image ? 'cover-selected' : ''}>
-      <img src={assetUrl(image)} alt={`${poiName(poi)} - ảnh ${index + 1}`} />
+      {unavailableImages.includes(image)
+        ? <Notice>Không tải được ảnh này. Bạn có thể gỡ ảnh và tải lại file gốc.</Notice>
+        : <img src={assetUrl(image)} alt={`${poiName(poi)} - ảnh ${index + 1}`} onError={() => setUnavailableImages(previous => [...previous, image])} />}
       <figcaption>{image === poi.cover_image ? 'Ảnh đại diện' : `Ảnh ${index + 1}`}</figcaption>
       {editable && <div className="admin-actions"><button className="text-button" disabled={busy || image === poi.cover_image} onClick={() => void order(poi.images, image)}>Đặt đại diện</button><button className="text-button" aria-label={`Đưa ảnh ${index + 1} lên trước`} disabled={busy || index === 0} onClick={() => move(index, -1)}>←</button><button className="text-button" aria-label={`Đưa ảnh ${index + 1} ra sau`} disabled={busy || index === poi.images.length - 1} onClick={() => move(index, 1)}>→</button><button className="text-button" disabled={busy} onClick={() => void remove(image)}>Gỡ ảnh</button></div>}
     </figure>)}</div>

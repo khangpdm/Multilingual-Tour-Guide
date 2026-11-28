@@ -98,17 +98,19 @@ def languages():
 
 
 @router.get('/poi/load-all')
-def load_all(response: Response, langs: str | None = None, updated_after: datetime | None = None, if_none_match: str | None = Header(default=None)):
+def load_all(response: Response, langs: str | None = None, updated_after: datetime | None = None, sync_languages: str | None = None, if_none_match: str | None = Header(default=None)):
     synced_at = datetime.now(timezone.utc)
     records = active_pois()
+    language_version = ",".join(sorted(active_languages()))
+    full_sync = updated_after is None or (sync_languages is not None and sync_languages != language_version)
     items = sorted([public_poi(record, langs.split(',') if langs is not None else None) for record in records], key=lambda item: item['poi_id'])
     deleted = []
-    if updated_after:
+    if updated_after and not full_sync:
         cutoff = updated_after.replace(tzinfo=timezone.utc) if updated_after.tzinfo is None else updated_after.astimezone(timezone.utc)
         items = [item for item in items if datetime.fromisoformat(item['updated_at'].replace('Z', '+00:00')) > cutoff]
         visible = {record['poi_id'] for record in records}
         deleted = [record['poi_id'] for record in database.fetch_all('pois') if record['poi_id'] not in visible]
-    payload = {'updated_pois': items, 'deleted_poi_ids': sorted(deleted)}
+    payload = {'updated_pois': items, 'deleted_poi_ids': sorted(deleted), 'full_sync': full_sync, 'sync_languages': language_version}
     etag = '"' + hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest() + '"'
     headers = {'ETag': etag, 'Cache-Control': 'no-cache'}
     if if_none_match == etag:
@@ -180,7 +182,7 @@ def detail(poi_id: str, lang: str = 'vi'):
 
 @router.get('/media/{name}')
 def media(name: str):
-    path = asset_path('/admin/assets/' + name)
+    path = asset_path('/admin/assets/' + name, missing_status=404)
     target = '/admin/assets/' + name
     locales = active_languages()
     visible = any(target in record.get('images', []) or any(locale in locales and content.get('audio_url') == target for locale, content in record.get('content', {}).items()) for record in active_pois())
@@ -476,6 +478,9 @@ def published_part(release_id: str, part: str):
 @router.get('/offline-packs/{release_id}/files/{part}')
 def offline_download(release_id: str, part: str):
     path = published_part(release_id, part)
+    release = query("SELECT cdn_base_url FROM offline_pack_releases WHERE id=%s AND status='published'", (release_id,), one=True)
+    if release and release["cdn_base_url"]:
+        return RedirectResponse(f"{release['cdn_base_url']}/{path.name}", status_code=307, headers={'Cache-Control': 'no-cache'})
     return FileResponse(path, media_type='application/zip', filename=path.name, headers={'Cache-Control': 'no-cache'})
 
 

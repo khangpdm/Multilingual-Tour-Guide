@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { X } from 'lucide-react'
 import { useAdmin } from '../admin/store'
 import { apiBase, apiFetch, responseError } from '../admin/api'
 
@@ -20,14 +21,19 @@ export function CrudDialog({ title, children, onClose, size = 'default' }: { tit
     const previous = document.activeElement as HTMLElement | null
     const notifications = document.getElementById('admin-notifications')
     const parent = notifications?.parentElement
-    dialog.current?.showModal()
-    if (notifications) dialog.current?.appendChild(notifications)
+    const element = dialog.current
+    element?.showModal()
+    if (notifications) element?.appendChild(notifications)
     return () => {
-      if (notifications && parent) parent.appendChild(notifications)
+      element?.close()
+      if (notifications?.parentElement === element && notifications) {
+        const destination = parent?.isConnected ? parent : document.body
+        destination.appendChild(notifications)
+      }
       previous?.focus()
     }
   }, [])
-  return <dialog ref={dialog} className={`crud-dialog native-dialog${size === 'wide' ? ' dialog-wide' : ''}`} onPointerDown={event => { backdropPressed.current = event.button === 0 && isDialogBackdrop(event) }} onPointerCancel={() => { backdropPressed.current = false }} onClick={event => { const dismiss = backdropPressed.current && isDialogBackdrop(event); backdropPressed.current = false; if (dismiss) onClose() }} onCancel={event => { event.preventDefault(); onClose() }} aria-label={title}><div className="crud-dialog-head"><h2>{title}</h2><button type="button" className="icon-button" aria-label="Đóng biểu mẫu" onClick={onClose}>×</button></div>{children}</dialog>
+  return <dialog ref={dialog} className={`crud-dialog native-dialog${size === 'wide' ? ' dialog-wide' : ''}`} onPointerDown={event => { backdropPressed.current = event.button === 0 && isDialogBackdrop(event) }} onPointerCancel={() => { backdropPressed.current = false }} onClick={event => { const dismiss = backdropPressed.current && isDialogBackdrop(event); backdropPressed.current = false; if (dismiss) onClose() }} onCancel={event => { event.preventDefault(); onClose() }} aria-label={title}><div className="crud-dialog-head"><h2>{title}</h2><button type="button" className="dialog-close-button" aria-label="Đóng biểu mẫu" onClick={onClose}><X size={18} strokeWidth={1.8} /></button></div><div className="crud-dialog-body">{children}</div></dialog>
 }
 export function DemoNotice() { const { error, busy } = useAdmin(); return <>{busy && <Notice>Đang đồng bộ dữ liệu…</Notice>}{error && <p className="admin-error" role="alert">{error}</p>}</> }
 export function usePagination<T>(items: T[]) {

@@ -1,5 +1,6 @@
 from deep_translator import MyMemoryTranslator
 import edge_tts
+from app.services.tts_voices import EDGE_VOICES
 from pathlib import Path
 import asyncio
 from fastapi import HTTPException
@@ -211,26 +212,7 @@ async def process_audio_tasks_loop(db_pool):
                         )
                         await conn.commit()
 
-                        voice_map = {
-                            "en": "en-US-AriaNeural",
-                            "vi": "vi-VN-HoaiMyNeural",
-                            "ja": "ja-JP-NanamiNeural",
-                            "ko": "ko-KR-SunHiNeural",
-                            "zh": "zh-CN-XiaoxiaoNeural",
-                            "th": "th-TH-PremwadeeNeural",
-                            "fr": "fr-FR-DeniseNeural",
-                            "de": "de-DE-KatjaNeural",
-                            "es": "es-ES-ElviraNeural",
-                            "id": "id-ID-GadisNeural",
-                            "ru": "ru-RU-SvetlanaNeural",
-                            "pt": "pt-BR-FranciscaNeural",
-                            "it": "it-IT-ElsaNeural",
-                            "hi": "hi-IN-SwaraNeural",
-                            "ar": "ar-SA-ZariyahNeural",
-                            "tr": "tr-TR-EmelNeural",
-                        }
-
-                        voice = voice_map.get(language_code)
+                        voice = EDGE_VOICES.get(language_code)
 
                         if not voice:
                             raise RuntimeError(

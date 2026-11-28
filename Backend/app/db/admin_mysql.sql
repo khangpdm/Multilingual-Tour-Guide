@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS analytics_events (
     language_code VARCHAR(10),
     trigger_source VARCHAR(30),
     audio_tier VARCHAR(20),
+    duration_ms INT UNSIGNED NULL,
     device_id CHAR(36) NOT NULL,
     occurred_at DATETIME(3) NOT NULL,
     received_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),

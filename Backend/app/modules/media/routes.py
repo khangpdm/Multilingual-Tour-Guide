@@ -28,7 +28,7 @@ class ImageOrder(Input):
 
 @router.get("/admin/assets/{filename}")
 def asset(filename: str, user=Depends(require("poi.view"))):
-    return FileResponse(asset_path("/admin/assets/" + filename), headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600"})
+    return FileResponse(asset_path("/admin/assets/" + filename, missing_status=404), headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600"})
 
 
 @router.post("/admin/pois/{poi_id}/images")

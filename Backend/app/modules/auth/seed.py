@@ -23,7 +23,7 @@ def seed_admin(reset_password=False):
                 if user and user["username"]:
                     raise RuntimeError("ADMIN_EMAIL already belongs to a different username. Choose a distinct seed email.")
                 assigned = bool(user)
-            if user and (user["role_id"] not in {"local_admin", "super_admin"} or user["email"].lower() != email.lower()):
+            if user and (user["role_id"] != "super_admin" or user["email"].lower() != email.lower()):
                 raise RuntimeError("Seed account identity or role conflicts; no account was changed.")
             if not user or reset_password:
                 if len(password) < 8 or len(password.encode()) > 72 or not any(char.isalpha() for char in password) or not any(char.isdigit() for char in password) or password == "replace_with_a_unique_password":
@@ -36,9 +36,6 @@ def seed_admin(reset_password=False):
                 user_id = user["id"]
                 if assigned:
                     cursor.execute("UPDATE users SET username=%s WHERE id=%s", (credentials.username, user_id))
-                if user["role_id"] == "local_admin":
-                    cursor.execute("UPDATE users SET role_id='super_admin' WHERE id=%s", (user_id,))
-                    cursor.execute("DELETE FROM admin_sessions WHERE user_id=%s", (user_id,))
                 if reset_password:
                     cursor.execute("UPDATE users SET password_hash=%s,password_salt=NULL WHERE id=%s", (hashed, user_id))
                     cursor.execute("DELETE FROM admin_sessions WHERE user_id=%s", (user_id,))

@@ -21,3 +21,4 @@ Frontend/MobileApp/expo-env.d.ts
 *.log
 .DS_Store
 Thumbs.db
+/Backend/.piper-voices/

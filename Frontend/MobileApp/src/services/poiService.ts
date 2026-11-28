@@ -114,9 +114,34 @@ export function mapPOI(item: PublicPOI): POI {
   };
 }
 
-export async function fetchPOIs(): Promise<POI[]> {
-  const data = await httpGet<{ updated_pois: PublicPOI[] }>('/poi/load-all');
-  return data.updated_pois.map(mapPOI);
+let syncedPOIs = new Map<string, POI>();
+let syncTimestamp = '';
+let syncLanguages = '';
+let pendingSync: Promise<POI[]> | undefined;
+
+export function fetchPOIs(): Promise<POI[]> {
+  if (pendingSync) return pendingSync;
+  const query = syncTimestamp
+    ? `?updated_after=${encodeURIComponent(syncTimestamp)}&sync_languages=${encodeURIComponent(syncLanguages)}`
+    : '';
+  pendingSync = httpGet<{
+    updated_pois: PublicPOI[];
+    deleted_poi_ids: string[];
+    full_sync?: boolean;
+    sync_timestamp?: string;
+    sync_languages?: string;
+  }>(`/poi/load-all${query}`).then((data) => {
+    const next = query && data.full_sync === false ? new Map(syncedPOIs) : new Map<string, POI>();
+    for (const id of data.deleted_poi_ids ?? []) next.delete(id);
+    for (const item of data.updated_pois) next.set(item.poi_id, mapPOI(item));
+    syncedPOIs = next;
+    const timestamp = Date.parse(data.sync_timestamp ?? '');
+    // Overlap by one second for records committed during a request.
+    syncTimestamp = Number.isFinite(timestamp) ? new Date(timestamp - 1000).toISOString() : '';
+    syncLanguages = data.sync_languages ?? '';
+    return [...next.values()].sort((first, second) => first.id.localeCompare(second.id));
+  }).finally(() => { pendingSync = undefined; });
+  return pendingSync;
 }
 
 export async function fetchPOIDetail(poiId: string): Promise<POI> {

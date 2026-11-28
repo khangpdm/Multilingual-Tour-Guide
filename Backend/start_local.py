@@ -31,7 +31,7 @@ def start_service(module, port, host='127.0.0.1'):
     )
 
 
-def wait_for_tts(process, api_key):
+def wait_for_tts(process, api_key, provider):
     deadline = time.monotonic() + 45
     request = urllib.request.Request('http://127.0.0.1:8001/health', headers={'Authorization': 'Bearer ' + api_key})
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -41,7 +41,7 @@ def wait_for_tts(process, api_key):
         try:
             with opener.open(request, timeout=2) as response:
                 health = json.load(response)
-                if health.get('status') == 'ok' and health.get('provider') == 'windows-local' and health.get('voices'):
+                if health.get('status') == 'ok' and health.get('provider') == provider and health.get('voices'):
                     return
         except urllib.error.HTTPError:
             raise RuntimeError('TTS health check was rejected. Check TTS_API_KEY and restart both services.') from None
@@ -64,7 +64,7 @@ def stop_services(processes):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description='Run local Admin backend and Windows TTS.')
+    parser = argparse.ArgumentParser(description='Run local Admin backend and TTS.')
     parser.add_argument('--mobile-lan', action='store_true', help='Also expose the public-only mobile API on LAN port 8002. Admin/TTS remain loopback-only.')
     arguments = parser.parse_args(argv)
     processes = []
@@ -74,13 +74,18 @@ def main(argv=None):
         raise KeyboardInterrupt
 
     try:
-        if os.name != 'nt':
-            raise RuntimeError('This launcher requires Windows for local speech synthesis.')
         for dependency in ('dotenv', 'uvicorn', 'lameenc'):
             if importlib.util.find_spec(dependency) is None:
                 raise RuntimeError('Missing dependencies. Run Backend/.venv/Scripts/python.exe -m pip install -r Backend/requirements-local-tts.txt from the repository root.')
         from app.core.config import settings
 
+        provider = settings.get('TTS_PROVIDER', 'edge-tts').strip().lower()
+        if provider not in {'edge-tts', 'windows-local', 'google'}:
+            raise RuntimeError('Set TTS_PROVIDER to edge-tts, windows-local, or google.')
+        if provider == 'windows-local' and os.name != 'nt':
+            raise RuntimeError('Windows speech synthesis requires Windows.')
+        if provider == 'edge-tts' and importlib.util.find_spec('edge_tts') is None:
+            raise RuntimeError('Install edge-tts with python -m pip install -r requirements-local-tts.txt.')
         if settings.get('TTS_ENDPOINT') not in {'http://127.0.0.1:8001/speech', 'http://localhost:8001/speech'}:
             raise RuntimeError('Set TTS_ENDPOINT=http://127.0.0.1:8001/speech in Backend/.env.')
         if not settings.get('TTS_API_KEY'):
@@ -90,7 +95,7 @@ def main(argv=None):
             previous_handlers[signal_number] = signal.signal(signal_number, interrupted)
         print('Starting local TTS on 127.0.0.1:8001...', flush=True)
         processes.append(start_service('local_tts.server:app', 8001))
-        wait_for_tts(processes[0], settings['TTS_API_KEY'])
+        wait_for_tts(processes[0], settings['TTS_API_KEY'], provider)
         print('TTS ready. Starting backend on 127.0.0.1:8000. Press Ctrl+C to stop both.', flush=True)
         processes.append(start_service('app.main:app', 8000))
         if arguments.mobile_lan:

@@ -137,6 +137,7 @@ async def create_telemetry_events(
             event.language_code,
             event.trigger_source,
             event.audio_tier,
+            event.duration_ms if event.event_type == "AUDIO_PLAY" else None,
             norm_occurred_at,
             received_at
         ))
@@ -152,8 +153,8 @@ async def create_telemetry_events(
                             await cursor.execute(
                                 """
                                 INSERT INTO analytics_events 
-                                (client_event_id, device_id, event_type, poi_id, zone_id, language_code, trigger_source, audio_tier, occurred_at, received_at)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                (client_event_id, device_id, event_type, poi_id, zone_id, language_code, trigger_source, audio_tier, duration_ms, occurred_at, received_at)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                                 """,
                                 ev
                             )

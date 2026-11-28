@@ -1,6 +1,7 @@
 import hashlib
 import json
 import re
+import tempfile
 import zipfile
 import zlib
 from pathlib import Path
@@ -10,11 +11,13 @@ from fastapi.responses import FileResponse
 from pydantic import Field
 
 from app.core.config import LANG_SHARD_MAX_LANGS, MEDIA_ROOT
-from app.core.security import require
+from app.core.security import require, user_permissions
 from app.core.state import mutation_lock
 from app.core.utils import audit, fail, get_record, identifier, public
 from app.db.connection import database
 from app.modules.media.storage import asset_path
+from app.modules.audio.queue import enqueue
+from app.modules.offline.distribution import extract_map, map_source, upload_release
 from app.modules.pois.readiness import readiness
 from app.modules.pois.routes import poi_public
 from app.schemas.base import Input
@@ -39,6 +42,8 @@ def release_record(release_id):
     release = query("SELECT * FROM offline_pack_releases WHERE id=%s", (release_id,), one=True)
     if not release:
         fail(404, "NOT_FOUND", "Offline release not found.")
+    counts = release.get("audio_fallback_counts")
+    release["audio_fallback_counts"] = json.loads(counts) if counts else None
     release["languages"] = query("SELECT * FROM offline_pack_languages WHERE release_id=%s ORDER BY language_code", (release_id,))
     release["outdated"] = False
     if release["status"] in {"ready", "published"}:
@@ -265,19 +270,30 @@ def snapshot(zone_id, locales):
         pois.append(poi)
     if not pois:
         fail(422, "EMPTY_ZONE", "This zone has no published POIs.")
+    if zone.get("cover_image"):
+        cover = zone["cover_image"]
+        assets[cover] = hashlib.sha256(asset_path(cover).read_bytes()).hexdigest()
+    basemap = map_source()
     result = {"schema_version": 1, "zone": public(zone), "locales": sorted(locales), "pois": sorted(pois, key=lambda poi: poi["poi_id"]), "assets": assets}
+    if basemap:
+        result["map_source_version"] = basemap[1]
     encoded = json.dumps(result, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     return result, hashlib.sha256(encoded).hexdigest()
 
 
-def zip_bundle(path, manifest, urls, expected_assets):
+def zip_bundle(path, manifest, urls, expected_assets, basemap=None):
     resources = [(url, asset_path(url)) for url in sorted(set(urls))]
-    if sum(resource.stat().st_size for _, resource in resources) > PACK_LIMIT:
+    map_size = basemap.stat().st_size if basemap else 0
+    if map_size + sum(resource.stat().st_size for _, resource in resources) > PACK_LIMIT:
         fail(422, "PACK_TOO_LARGE", "A pack part may not exceed 250 MB. Split the zone.")
     manifest = {**manifest, "asset_sha256": {"assets/" + resource.name: expected_assets[url] for url, resource in resources}}
+    if basemap:
+        manifest["map"] = {"path": "map.pmtiles", "sha256": hashlib.sha256(basemap.read_bytes()).hexdigest(), "size_bytes": map_size}
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
-        total_size = 0
+        if basemap:
+            archive.write(basemap, "map.pmtiles", compress_type=zipfile.ZIP_STORED)
+        total_size = map_size
         for url, resource in resources:
             data = resource.read_bytes()
             total_size += len(data)
@@ -289,7 +305,7 @@ def zip_bundle(path, manifest, urls, expected_assets):
     return hashlib.sha256(path.read_bytes()).hexdigest(), path.stat().st_size
 
 
-def build_release(release_id, data):
+def build_release(release_id, data, publisher=None):
     try:
         PACK_ROOT.mkdir(parents=True, exist_ok=True)
         release = release_record(release_id)
@@ -299,7 +315,22 @@ def build_release(release_id, data):
         for poi in data["pois"]:
             common.append({**{key: value for key, value in poi.items() if key != "content"}, "images": ["assets/" + Path(image).name for image in poi["images"]], "cover_image": "assets/" + Path(poi["cover_image"]).name})
             images.extend(poi["images"])
-        checksum, size = zip_bundle(PACK_ROOT / f"{release_id}-common.zip", {**base, "pois": common}, images, data["assets"])
+        zone = base["zone"]
+        if zone.get("cover_image"):
+            images.append(zone["cover_image"])
+            base["zone"] = {**zone, "cover_image": "assets/" + Path(zone["cover_image"]).name}
+        common_path = PACK_ROOT / f"{release_id}-common.zip"
+        manifest = {**base, "pois": common}
+        if data.get("map_source_version"):
+            source = map_source()
+            if not source or source[1] != data["map_source_version"]:
+                fail(409, "OFFLINE_MAP_CHANGED", "Nguồn PMTiles đã thay đổi. Hãy build phiên bản mới.")
+            with tempfile.TemporaryDirectory(dir=PACK_ROOT, prefix="map-") as temporary:
+                basemap = Path(temporary) / "zone.pmtiles"
+                extract_map(zone, source[0], basemap)
+                checksum, size = zip_bundle(common_path, manifest, images, data["assets"], basemap)
+        else:
+            checksum, size = zip_bundle(common_path, manifest, images, data["assets"])
         for locale in data["locales"]:
             audio = [poi["content"][locale]["audio_url"] for poi in data["pois"]]
             content = [{"poi_id": poi["poi_id"], **poi["content"][locale], "audio_url": "assets/" + Path(poi["content"][locale]["audio_url"]).name} for poi in data["pois"]]
@@ -310,12 +341,56 @@ def build_release(release_id, data):
         message = str(error.detail.get("message", "Invalid resources")) if isinstance(error, HTTPException) and isinstance(error.detail, dict) else "Packaging failed. Check storage and resources, then create a new version."
         query("UPDATE offline_pack_releases SET status='failed',error=%s WHERE id=%s", (message[:1000], release_id))
         query("UPDATE offline_pack_languages SET status='failed' WHERE release_id=%s AND status='building'", (release_id,))
+        return
+    if publisher:
+        try:
+            publish_release(release_id, publisher)
+        except Exception as error:
+            detail = error.detail.get("message") if isinstance(error, HTTPException) and isinstance(error.detail, dict) else None
+            message = "Tự động phát hành thất bại. " + (detail or "Hãy thử phát hành lại.")
+            query("UPDATE offline_pack_releases SET error=%s WHERE id=%s AND status='ready'", (message[:1000], release_id))
 
 
 @router.get("/admin/offline-packs")
-def releases(page: int = Query(1, ge=1), page_size: int = Query(100, ge=1, le=100), user=Depends(require("offline.view"))):
-    records = query("SELECT id FROM offline_pack_releases ORDER BY created_at DESC LIMIT %s OFFSET %s", (page_size, (page - 1) * page_size))
+def releases(page: int = Query(1, ge=1), page_size: int = Query(100, ge=1, le=100), latest_per_zone: bool = False, user=Depends(require("offline.view"))):
+    offset = (page - 1) * page_size
+    if latest_per_zone:
+        records = query(
+            """SELECT r.id, (
+                   SELECT MAX(built_at) FROM offline_pack_releases
+                   WHERE zone_id = r.zone_id
+               ) AS latest_built_at
+               FROM offline_pack_releases AS r
+               JOIN (SELECT zone_id, MAX(version) AS version FROM offline_pack_releases GROUP BY zone_id) AS latest
+                 ON latest.zone_id = r.zone_id AND latest.version = r.version
+               ORDER BY r.zone_id LIMIT %s OFFSET %s""",
+            (page_size, offset),
+        )
+        total = query("SELECT COUNT(DISTINCT zone_id) AS total FROM offline_pack_releases", one=True)["total"]
+        return {"items": [public({**release_record(row["id"]), "latest_built_at": row["latest_built_at"]}) for row in records], "total": total}
+    records = query("SELECT id FROM offline_pack_releases ORDER BY created_at DESC, id DESC LIMIT %s OFFSET %s", (page_size, offset))
     return {"items": [public(release_record(record["id"])) for record in records], "total": query("SELECT COUNT(*) AS total FROM offline_pack_releases", one=True)["total"]}
+
+
+@router.post("/admin/offline-packs/zones/{zone_id}/queue-english")
+def queue_zone_english(zone_id: str, background: BackgroundTasks, user=Depends(require("offline.manage"))):
+    from app.modules.audio.routes import configured
+
+    configured()
+    with mutation_lock, database.transaction():
+        zone = get_record("zones", zone_id)
+        if not zone.get("is_active"):
+            fail(422, "INACTIVE_ZONE", "Hãy chọn khu vực đang hoạt động.")
+        tasks = []
+        for poi in database.fetch_all("pois", {"zone_id": zone_id, "status": "active", "is_archived": False}):
+            database.lock_poi(poi["poi_id"])
+            current = get_record("pois", poi["poi_id"])
+            if current["is_archived"] or current["zone_id"] != zone_id:
+                continue
+            tasks.extend(enqueue(current, ["en"], user, background))
+        if tasks:
+            audit(user, "offline.queue_english", zone_id, None, {"tasks_created": len(tasks)})
+    return {"tasks_created": tasks}
 
 
 @router.post("/admin/offline-packs", status_code=201)
@@ -323,17 +398,21 @@ def create_release(body: BuildPack, background: BackgroundTasks, user=Depends(re
     with mutation_lock, database.transaction():
         locales = sorted(set(["en", *body.locales]))
         data, checksum = snapshot(body.zone_id, locales)
+        fallback_counts = {locale: sum(
+            bool(poi["content"][locale].get("audio_fallback_locale")) for poi in data["pois"]
+        ) for locale in locales if locale != "en"}
+        publisher = user if "offline.publish" in user_permissions(user) else None
         release_id = identifier("release")
         with database.connection() as connection, connection.cursor() as cursor:
             cursor.execute("SELECT id FROM zone WHERE id=%s FOR UPDATE", (body.zone_id,))
             cursor.fetchone()
             cursor.execute("SELECT COALESCE(MAX(version),0)+1 AS version FROM offline_pack_releases WHERE zone_id=%s", (body.zone_id,))
             version = cursor.fetchone()["version"]
-            cursor.execute("INSERT INTO offline_pack_releases (id,zone_id,version,created_by,source_hash,poi_count) VALUES (%s,%s,%s,%s,%s,%s)", (release_id, body.zone_id, version, user["user_id"], checksum, len(data["pois"])))
+            cursor.execute("INSERT INTO offline_pack_releases (id,zone_id,version,created_by,source_hash,poi_count,audio_fallback_counts) VALUES (%s,%s,%s,%s,%s,%s,%s)", (release_id, body.zone_id, version, user["user_id"], checksum, len(data["pois"]), json.dumps(fallback_counts)))
             for locale in locales:
                 cursor.execute("INSERT INTO offline_pack_languages (id,release_id,language_code) VALUES (%s,%s,%s)", (identifier("language"), release_id, locale))
         audit(user, "offline.build", release_id, None, {"zone_id": body.zone_id, "version": version, "locales": locales})
-        background.add_task(build_release, release_id, data)
+        background.add_task(build_release, release_id, data, publisher)
     return public(release_record(release_id))
 
 
@@ -359,25 +438,35 @@ def verify_bundle(release_id, part, checksum):
 
 @router.post("/admin/offline-packs/{release_id}/publish")
 def publish(release_id: str, user=Depends(require("offline.publish"))):
+    publish_release(release_id, user)
+    return public(release_record(release_id))
+
+
+def publish_release(release_id, user):
+    zone = query("SELECT zone_id FROM offline_pack_releases WHERE id=%s", (release_id,), one=True)
+    if not zone:
+        fail(404, "NOT_FOUND", "Offline release not found.")
     with mutation_lock, database.transaction():
+        database.lock_zone(zone["zone_id"])
         release = release_record(release_id)
         if release["status"] != "ready":
             fail(409, "INVALID_STATE", "Only ready releases may be published.")
+        newer = query("SELECT id FROM offline_pack_releases WHERE zone_id=%s AND version>%s AND published_at IS NOT NULL LIMIT 1 FOR UPDATE", (release["zone_id"], release["version"]), one=True)
+        if newer:
+            fail(409, "NEWER_PACK_PUBLISHED", "Một phiên bản mới hơn đã được phát hành. Hãy tạo gói mới.")
         _, checksum = snapshot(release["zone_id"], [item["language_code"] for item in release["languages"]])
         if checksum != release["source_hash"]:
             fail(409, "STALE_PACK", "Source content changed. Build a new version before publishing.")
-        verify_bundle(release_id, "common", release["common_sha256"])
+        files = [verify_bundle(release_id, "common", release["common_sha256"])]
         for item in release["languages"]:
             if item["status"] != "ready":
                 fail(409, "NOT_READY", "A language pack is not ready.")
-            verify_bundle(release_id, item["language_code"], item["sha256"])
+            files.append(verify_bundle(release_id, item["language_code"], item["sha256"]))
+        cdn_base = upload_release(files)
         with database.connection() as connection, connection.cursor() as cursor:
-            cursor.execute("SELECT id FROM zone WHERE id=%s FOR UPDATE", (release["zone_id"],))
-            cursor.fetchone()
             cursor.execute("UPDATE offline_pack_releases SET status='superseded' WHERE zone_id=%s AND status='published'", (release["zone_id"],))
-            cursor.execute("UPDATE offline_pack_releases SET status='published',published_by=%s,published_at=UTC_TIMESTAMP(3) WHERE id=%s", (user["user_id"], release_id))
+            cursor.execute("UPDATE offline_pack_releases SET status='published',published_by=%s,published_at=UTC_TIMESTAMP(3),cdn_base_url=%s,error=NULL WHERE id=%s", (user["user_id"], cdn_base, release_id))
         audit(user, "offline.publish", release_id, None, {"version": release["version"]})
-    return public(release_record(release_id))
 
 
 @router.post("/admin/offline-packs/{release_id}/withdraw")

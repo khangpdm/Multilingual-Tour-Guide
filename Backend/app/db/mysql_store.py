@@ -96,10 +96,11 @@ class Collection:
                 cur.execute("SELECT code AS _id, code, name, native_name, is_active, is_default, display_order FROM languages")
                 return [_normalize_row(row) for row in cur.fetchall()]
             if self.name == "zones":
-                cur.execute("SELECT id AS _id, id AS zone_id, name, min_lng, min_lat, max_lng, max_lat, min_zoom, max_zoom, boundary, is_active, created_at, updated_at FROM zone")
+                cur.execute("SELECT id AS _id, id AS zone_id, name, min_lng, min_lat, max_lng, max_lat, min_zoom, max_zoom, boundary, names, description, cover_image, is_active, created_at, updated_at FROM zone")
                 result = [_normalize_row(row) for row in cur.fetchall()]
                 for row in result:
                     row["boundary"] = _decode_json(row.get("boundary"))
+                    row["names"] = _decode_json(row.get("names")) or {}
                     row["map_region"] = {"bbox": [float(row.pop("min_lng")), float(row.pop("min_lat")), float(row.pop("max_lng")), float(row.pop("max_lat"))], "min_zoom": row["min_zoom"], "max_zoom": row["max_zoom"]}
                 return result
             if self.name == "pois":
@@ -139,7 +140,7 @@ class Collection:
                 elif self.name == "zones":
                     bounds = doc["map_region"]["bbox"]
                     cur.execute("INSERT INTO zone (id,name,min_lng,min_lat,max_lng,max_lat,min_zoom,max_zoom,is_active) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)", (doc["_id"], doc["name"], *bounds, doc["map_region"]["min_zoom"], doc["map_region"]["max_zoom"], doc["is_active"]))
-                    cur.execute("UPDATE zone SET boundary=%s WHERE id=%s", (json.dumps(doc.get("boundary")), doc["_id"]))
+                    cur.execute("UPDATE zone SET boundary=%s,names=%s,description=%s,cover_image=%s WHERE id=%s", (json.dumps(doc.get("boundary")), json.dumps(doc.get("names", {})), doc.get("description"), doc.get("cover_image"), doc["_id"]))
                 elif self.name == "languages":
                     cur.execute("INSERT INTO languages (code,name,native_name,is_active,is_default,display_order) VALUES (%s,%s,%s,%s,%s,%s)", (doc["_id"], doc["name"], doc["native_name"], doc["is_active"], doc["is_default"], doc["display_order"]))
                 elif self.name == "pois":
@@ -190,7 +191,7 @@ class Collection:
             elif self.name == "zones":
                 fields = {**doc, **changes}; bounds = fields["map_region"]["bbox"]
                 cur.execute("UPDATE zone SET name=%s,min_lng=%s,min_lat=%s,max_lng=%s,max_lat=%s,min_zoom=%s,max_zoom=%s,is_active=%s WHERE id=%s", (fields["name"], *bounds, fields["map_region"]["min_zoom"], fields["map_region"]["max_zoom"], fields["is_active"], doc["_id"]))
-                cur.execute("UPDATE zone SET boundary=%s,updated_at=UTC_TIMESTAMP(3) WHERE id=%s", (json.dumps(fields.get("boundary")), doc["_id"]))
+                cur.execute("UPDATE zone SET boundary=%s,names=%s,description=%s,cover_image=%s,updated_at=UTC_TIMESTAMP(3) WHERE id=%s", (json.dumps(fields.get("boundary")), json.dumps(fields.get("names", {})), fields.get("description"), fields.get("cover_image"), doc["_id"]))
             elif self.name == "pois":
                 fields = {**doc, **changes}
                 if "content" in changes:
@@ -270,6 +271,10 @@ class MySQLDatabase:
             self._transaction_connection.reset(token)
             connection.close()
 
+    def lock_zone(self, zone_id):
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM zone WHERE id=%s FOR UPDATE", (zone_id,))
+
     def lock_poi(self, poi_id):
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute("SELECT id FROM poi WHERE id=%s FOR UPDATE", (poi_id,))
@@ -302,6 +307,10 @@ class MySQLDatabase:
             self._ensure_column(cur, "poi", "content_version", "INT NOT NULL DEFAULT 1")
             self._ensure_column(cur, "poi", "priority", "INT NOT NULL DEFAULT 0")
             self._ensure_column(cur, "zone", "boundary", "JSON NULL")
+            self._ensure_column(cur, "zone", "names", "JSON NULL")
+            self._ensure_column(cur, "zone", "description", "TEXT NULL")
+            self._ensure_column(cur, "zone", "cover_image", "VARCHAR(500) NULL")
+            self._ensure_column(cur, "analytics_events", "duration_ms", "INT UNSIGNED NULL")
             cur.execute("CREATE TABLE IF NOT EXISTS poi_versions (poi_id VARCHAR(36) NOT NULL,content_version INT NOT NULL,document JSON NOT NULL,saved_by VARCHAR(36) NOT NULL,created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),PRIMARY KEY(poi_id,content_version)) ENGINE=InnoDB")
             cur.execute("CREATE TABLE IF NOT EXISTS admin_settings (name VARCHAR(100) PRIMARY KEY,value JSON NOT NULL) ENGINE=InnoDB")
             cur.execute("CREATE TABLE IF NOT EXISTS mobile_presence (installation_id CHAR(36) CHARACTER SET ascii PRIMARY KEY,last_seen_at DATETIME(3) NOT NULL,KEY idx_presence_last_seen (last_seen_at)) ENGINE=InnoDB")
@@ -343,14 +352,10 @@ class MySQLDatabase:
             self._ensure_column(cur, "offline_pack_releases", "source_hash", "CHAR(64) NULL")
             self._ensure_column(cur, "offline_pack_releases", "error", "TEXT NULL")
             self._ensure_column(cur, "offline_pack_releases", "poi_count", "INT NOT NULL DEFAULT 0")
-            cur.execute("SELECT id FROM roles WHERE id='local_admin'")
-            new_local_role = not cur.fetchone()
-            if new_local_role:
-                cur.execute("INSERT INTO roles (id,name,level,is_system) VALUES ('local_admin','Local database editor',2,TRUE)")
+            self._ensure_column(cur, "offline_pack_releases", "cdn_base_url", "VARCHAR(500) NULL")
+            self._ensure_column(cur, "offline_pack_releases", "audio_fallback_counts", "TEXT NULL")
             for permission in PERMISSIONS:
                 cur.execute("INSERT IGNORE INTO permissions (id,domain) VALUES (%s,%s)", (permission, permission.split(".")[0]))
-                if permission not in MANAGEMENT_PERMISSIONS and (new_local_role or cur.rowcount == 1):
-                    cur.execute("INSERT IGNORE INTO role_permissions (role_id,permission_id) VALUES ('local_admin',%s)", (permission,))
             for role_id, name, level in (("poi_manager", "Quản lý điểm tham quan", 1), ("admin", "Quản trị viên", 2)):
                 cur.execute("INSERT IGNORE INTO roles (id,name,level,is_system) VALUES (%s,%s,%s,TRUE)", (role_id, name, level))
                 cur.execute("SELECT is_system FROM roles WHERE id=%s", (role_id,))

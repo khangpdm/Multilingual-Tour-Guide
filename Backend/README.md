@@ -30,7 +30,7 @@ cd Backend
 .venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-On startup the API checks MySQL, applies the safe `CREATE TABLE IF NOT EXISTS` schema and additive Admin columns, creates the system Super Admin role/permissions, and seeds the configured username. The migration adds a nullable, case-insensitively unique `users.username`; existing email data is retained. An existing local Admin matching `ADMIN_EMAIL` without a username is assigned `ADMIN_USERNAME`, preserving its password and status. Existing users now log in with their email; usernames remain only for seed/backward-compatible account identity. The additive auth migration creates three authentication tables without changing existing passwords. Old sessions require fresh login. Conflicting usernames, emails or unrelated roles fail without taking over another account. Passwords use bcrypt.
+On startup the API checks MySQL, applies the safe `CREATE TABLE IF NOT EXISTS` schema and additive Admin columns, creates the system Super Admin role/permissions, and seeds the configured username. The migration adds a nullable, case-insensitively unique `users.username`; existing email data is retained. An existing Super Admin matching `ADMIN_EMAIL` without a username is assigned `ADMIN_USERNAME`, preserving its password and status. Existing users now log in with their email; usernames remain only for seed/backward-compatible account identity. The additive auth migration creates three authentication tables without changing existing passwords. Old sessions require fresh login. Conflicting usernames, emails or unrelated roles fail without taking over another account. Passwords use bcrypt.
 
 Normal startup and repeated seeding never reset an existing password. To explicitly set the configured Admin password and invalidate that account's existing sessions, run from `Backend`:
 
@@ -44,7 +44,37 @@ Run the UI separately from `Frontend/Admin` using `npm run dev`. Keep `VITE_API_
 
 ## Data and limitations
 
+### Edge TTS for local Admin
+
+Set `TTS_PROVIDER=edge-tts` in `Backend/.env` and keep the loopback
+`TTS_ENDPOINT=http://127.0.0.1:8001/speech` and existing `TTS_API_KEY`.
+Install dependencies from `requirements-local-tts.txt` and run
+`python start_local.py` from `Backend`. The Admin adapter and Mobile worker
+use the same voice mapping. Backend needs Internet access for synthesis.
+`TTS_API_KEY` protects the local adapter and is not sent to Edge TTS.
+
+### Google Cloud Text-to-Speech from local Admin
+
+Enable Text-to-Speech and billing on your Google Cloud project. Install Google
+Cloud CLI, then configure Application Default Credentials (ADC) in PowerShell:
+
+```powershell
+gcloud auth application-default login
+gcloud auth application-default set-quota-project YOUR_PROJECT_ID
+.\.venv\Scripts\python.exe -m pip install -r requirements-local-tts.txt
+```
+
+Run the installation command from `Backend`. In `Backend/.env`, keep the
+existing loopback `TTS_ENDPOINT` and `TTS_API_KEY`, and set
+`TTS_PROVIDER=google`. Restart with `.\.venv\Scripts\python.exe start_local.py`.
+The launcher checks Google voice availability before starting the backend.
+The Google provider returns MP3 and accepts scripts up to 5,000 UTF-8 bytes.
+`TTS_API_KEY` authenticates the local adapter; ADC authenticates Google Cloud.
+Set `TTS_PROVIDER=windows-local` to switch back to Windows voices.
+
 ### Local Windows TTS (English and Vietnamese)
+
+Set `TTS_PROVIDER=windows-local` to select Windows speech.
 
 This optional service uses installed Windows speech voices, converts PCM to
 128 kbps MP3 with LAME, and implements the existing backend speech-provider
@@ -79,7 +109,7 @@ To run only TTS, use `.\.venv\Scripts\python.exe -m uvicorn local_tts.server:app
 The local TTS server requires this bearer secret and loopback requests, has
 no CORS access for browser clients, limits scripts to 5000 characters, and
 serializes synthesis. Keep it bound to loopback, with proxy headers disabled.
-Authenticated GET `/health` lists installed voices. Windows PowerShell is
+Authenticated GET `/health` lists configured voices. Windows PowerShell is
 launched hidden with a process-only execution-policy override for the bundled
 script; no persistent policy or registry changes are made.
 
@@ -115,12 +145,10 @@ Expected auth errors: 401 for invalid credentials/session/OTP, 403 for disabled 
 
 ## Super Admin and account management
 
-The configured seed account is now a system `super_admin` (level 3), with every
-implemented backend permission. Startup upgrades the matching legacy `local_admin`
-seed only when both its configured username/email identity and role match; it
-preserves its password and status, and revokes old sessions on promotion. Other
-local admins are not promoted. Restart the backend and sign in again after this
-upgrade. Identity conflicts fail rather than taking over another account.
+The configured seed account is a system `super_admin` (level 3) with every
+implemented backend permission. Startup checks the configured username, email
+and role against the existing account. Identity conflicts fail rather than
+taking over another account.
 
 Super Admin permissions cannot be edited. Custom roles have level 1 or 2;
 non-Super Admin actors may manage only lower-level roles/accounts and cannot
@@ -139,7 +167,6 @@ audit records commit together; role changes and deactivation revoke sessions.
 
 Account management is reserved for Super Admin. Startup seeds the Admin and
 POI Manager roles and adds a manual-lock flag to the authentication table.
-The legacy local_admin role remains available for existing accounts.
 
 The server sends activation and reset links through SMTP. Creation persists the
 account before email delivery. The account appears as waiting for activation
@@ -191,3 +218,31 @@ Run exactly one Uvicorn worker for this local implementation, without reload dur
 ## Huy backend verification
 
 See [HUY_H1_PRD_V2.md](HUY_H1_PRD_V2.md) for the current H1 scope and rollout checklist. Audit snapshots and legacy audit responses omit nested secret fields. Audit date filters reject a start date after the end date. Audio retry rejects inactive languages and protected uploaded audio before scheduling work; queued tasks validate their source again before contacting TTS. Local test reports and disposable test data are not required for deployment.
+
+### Offline map and CDN delivery
+
+The local Windows setup uses `tools/pmtiles/pmtiles.exe` (go-pmtiles 1.31.2)
+and `media/maps/ho-chi-minh.pmtiles`. Both paths in `.env` resolve relative
+to `Backend`. The local archive covers longitude 106.60–106.85 and latitude
+10.65–10.90 at zoom levels 0–15, including the current District 1 zone.
+It is a regional extract of
+`https://data.source.coop/protomaps/openstreetmap/tiles/v3.pmtiles`
+(Protomaps Basemap, OSM replication date 2024-08-30). Display
+`© OpenStreetMap contributors` with a link to
+`https://www.openstreetmap.org/copyright` when rendering this data.
+Replace the local source with a larger or newer extract when adding zones
+outside this coverage. Generated maps and the CLI binary are ignored by Git.
+
+Set `OFFLINE_PMTILES_SOURCE` to a local PMTiles v3 file licensed for offline
+distribution, and set `OFFLINE_PMTILES_CLI` to the official PMTiles CLI if it
+isn't on PATH. New common ZIPs then contain `map.pmtiles`, extracted for the
+zone polygon and zoom range, with its SHA-256 and size in the manifest. The
+existing Mobile resource-by-resource installer still installs images and audio.
+
+For ZIP distribution through S3 and a CDN, install `boto3` in the backend
+environment and set both `OFFLINE_S3_BUCKET` and `OFFLINE_CDN_BASE_URL`.
+The backend uses the standard AWS credential chain. Configure the CDN to serve
+the bucket's `offline-packs/` prefix. Publish uploads all verified ZIPs before
+activating the release. The mobile ZIP endpoint redirects to the published CDN
+URL, while individual media and manifest endpoints continue to use local packs.
+Without CDN configuration, ZIPs are served directly from the backend.

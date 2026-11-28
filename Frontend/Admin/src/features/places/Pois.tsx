@@ -1,3 +1,5 @@
+import { Select } from '@base-ui/react/select'
+import { Check, ChevronDown } from 'lucide-react'
 import { AuditEntry } from '../audit/AuditEntry'
 import { toast } from 'sonner'
 import { useEffect, useState, type FormEvent } from 'react'
@@ -40,7 +42,7 @@ export function Pois() {
         <td><strong>{poiName(poi)}</strong><small className="admin-block">{categories[poi.category] || poi.category} · v{poi.content_version}</small></td>
         <td>{data.zones.find(item => item.zone_id === poi.zone_id)?.name}</td>
         <td>{data.languages.filter(language => language.is_active).map(language => <div key={language.code} className="locale-status">{language.code.toUpperCase()} <Status value={poi.content_status?.[language.code] || (poi.content[language.code]?.audio_url ? 'ready' : 'missing')} /></div>)}{!poi.content.en?.audio_url && <small>Chưa có audio mặc định tiếng Anh</small>}</td>
-        <td><Status value={poi.status} /></td><td>{dateLabel(poi.updated_at)}</td><td><button className="text-button" onClick={() => navigate(`/pois/${poi.poi_id}`)}>Chi tiết →</button></td>
+        <td><Status value={poi.status} /></td><td>{dateLabel(poi.updated_at)}</td><td><button type="button" className="secondary-button" aria-haspopup="dialog" onClick={() => navigate(`/pois/${poi.poi_id}`)}>Chi tiết</button></td>
       </tr>)}</tbody></table></div>{pagination.controls}
       {!rows.length && <Empty text="Không có địa điểm phù hợp." />}
     </section>
@@ -51,7 +53,8 @@ export function PoiEditor({ id }: { id: string }) {
   const { data, can, mutate, user, busy, mode } = useAdmin()
   const navigate = useNavigate()
   const original = data.pois.find(poi => poi.poi_id === id)
-  const [draft, setDraft] = useState<Poi>(() => original ? structuredClone(original) : { poi_id: uid('poi'), zone_id: data.zones.find(zone => zone.is_active)?.zone_id || '', category: 'heritage', location: { lat: 10.7726, lng: 106.698 }, geofence_radius_m: 30, priority: 0, content_version: 1, qr_code: null, status: 'active', images: [], content: { en: emptyContent() }, last_modified_by: user!.user_id, created_at: stamp(), updated_at: stamp() })
+  const activeZones = data.zones.filter(zone => zone.is_active)
+  const [draft, setDraft] = useState<Poi>(() => original ? structuredClone(original) : { poi_id: uid('poi'), zone_id: activeZones.length === 1 ? activeZones[0].zone_id : '', category: 'heritage', location: { lat: Number.NaN, lng: Number.NaN }, geofence_radius_m: 30, priority: 0, content_version: 1, qr_code: null, status: 'active', images: [], content: { en: emptyContent() }, last_modified_by: user!.user_id, created_at: stamp(), updated_at: stamp() })
   const [dirty, setDirty] = useState(false)
   const [tab, setTab] = useState('Thông tin')
   useEffect(() => { if (original && !dirty) setDraft(structuredClone(original)) }, [original, dirty])
@@ -61,6 +64,10 @@ export function PoiEditor({ id }: { id: string }) {
     void api<{ radius_m: number }>('/admin/settings/geofence').then(result => { if (!cancelled) setDraft(current => ({ ...current, geofence_radius_m: result.radius_m })) }).catch(error => toast.error((error as Error).message))
     return () => { cancelled = true }
   }, [original, mode])
+  const selectedZone = data.zones.find(zone => zone.zone_id === draft.zone_id)
+  const zoneOptions = data.zones
+    .filter(zone => zone.is_active || zone.zone_id === selectedZone?.zone_id)
+    .map(zone => ({ value: zone.zone_id, label: zone.is_active ? zone.name : `${zone.name} (đã tắt)`, disabled: !zone.is_active }))
   const editable = can(original ? 'poi.edit' : 'poi.create') && original?.status !== 'archived'
   if (id !== 'new' && !original) return <Empty text="Không tìm thấy POI." />
   if (id === 'new' && !can('poi.create')) return <Empty text="Bạn không có quyền tạo POI." />
@@ -68,9 +75,9 @@ export function PoiEditor({ id }: { id: string }) {
     event.preventDefault()
     try {
       const content = draft.content.en
+      if (!selectedZone?.is_active) throw new Error('Vui lòng chọn một khu vực đang hoạt động.')
       if (!validLocation(draft.location)) throw new Error('Vui lòng chọn vị trí hợp lệ trên bản đồ.')
-      const zone = data.zones.find(item => item.zone_id === draft.zone_id)
-      if (zone && !locationInZone(draft.location, zone)) throw new Error('Vị trí nằm ngoài khu vực đã chọn. Hãy chọn lại trên bản đồ hoặc đổi khu vực.')
+      if (!locationInZone(draft.location, selectedZone)) throw new Error('Vị trí nằm ngoài khu vực đã chọn. Hãy chọn lại trên bản đồ hoặc đổi khu vực.')
       if (!original && (!content?.name.trim() || !content.text.trim())) throw new Error('Cần tên và kịch bản tiếng Anh.')
       const body = { category: draft.category, zone_id: draft.zone_id, location: draft.location, priority: draft.priority || 0, ...(!original ? { content: { en: { name: content.name.trim(), address: content.address || null, description: content.description || null, introduction: content.introduction || null, text: content.text.trim() } } } : {}) }
       const result = await mutate<{ poi: Poi }>({ permission: original ? 'poi.edit' : 'poi.create', path: original ? `/admin/pois/${id}` : '/admin/pois', method: original ? 'PUT' : 'POST', version: draft.content_version, body, action: original ? 'poi.update' : 'poi.create', target: draft.poi_id, demo: current => ({ ...current, pois: original ? current.pois.map(poi => poi.poi_id === id ? { ...draft, content_version: poi.content_version + 1, updated_at: stamp() } : poi) : [...current.pois, { ...draft, qr_code: crypto.randomUUID().replaceAll('-', '') }] }) })
@@ -89,24 +96,47 @@ export function PoiEditor({ id }: { id: string }) {
     } catch (error) { toast.error((error as Error).message) }
   }
   return <>
-    <Heading title={original ? poiName(original) : 'Tạo địa điểm'} detail="Lưu phiên bản mới, không qua bước duyệt hoặc công khai.">
-      <button className="secondary-button" onClick={() => navigate('/pois')}>Về danh sách</button>
-      {original && can(original.status === 'archived' ? 'content.restore' : 'poi.delete') && <button className="secondary-button" disabled={busy} onClick={() => void changeStatus()}>{original.status === 'archived' ? 'Khôi phục' : 'Lưu trữ'}</button>}
-    </Heading>
+    {original && can(original.status === 'archived' ? 'content.restore' : 'poi.delete') && <div className="admin-actions">
+      <button type="button" className="secondary-button" disabled={busy} onClick={() => void changeStatus()}>{original.status === 'archived' ? 'Khôi phục' : 'Lưu trữ'}</button>
+    </div>}
     {original && <Notice><Status value={original.status} /> · Phiên bản {original.content_version}{dirty && draft.content_version !== original.content_version && ' · Có phiên bản mới trên máy chủ. Hãy so sánh trước khi lưu.'}</Notice>}
     {original && dirty && draft.content_version !== original.content_version && <Notice><details><summary>So sánh dữ liệu</summary><pre>{JSON.stringify({ local: draft, server: original }, null, 2)}</pre></details><button className="secondary-button" onClick={() => { if (window.confirm('Bỏ thay đổi chưa lưu và dùng bản mới?')) setDirty(false) }}>Dùng bản mới</button></Notice>}
     <section className="panel">
       <div className="tabs">{(original ? ['Thông tin', 'Nội dung & audio', 'Hình ảnh', 'QR', 'Kiểm tra & xem trước', 'Lịch sử phiên bản', 'Nhật ký'] : ['Thông tin']).map(name => <button key={name} className={tab === name ? 'tab-active' : ''} onClick={() => setTab(name)}>{name}</button>)}</div>
       {tab === 'Thông tin' && <form className="admin-form" onSubmit={save} onChange={() => setDirty(true)}><fieldset disabled={!editable || busy}>
         <div className="form-grid">
-          <Field label="Khu vực"><select required value={draft.zone_id} onChange={event => setDraft({ ...draft, zone_id: event.target.value })}><option value="">Chọn khu vực</option>{data.zones.filter(zone => zone.is_active || zone.zone_id === draft.zone_id).map(zone => <option key={zone.zone_id} value={zone.zone_id}>{zone.name}{!zone.is_active && ' (đã tắt)'}</option>)}</select></Field>
+          <div className="field">
+            <span id="poi-zone-label">Khu vực</span>
+            <Select.Root<string> items={zoneOptions} value={draft.zone_id || null} modal={false} required disabled={!editable || busy || !activeZones.length}
+              onValueChange={zoneId => {
+                if (!zoneId) return
+                setDirty(true)
+                setDraft(current => ({ ...current, zone_id: zoneId }))
+              }}>
+              <Select.Trigger className="poi-zone-trigger" aria-labelledby="poi-zone-label">
+                <Select.Value placeholder={activeZones.length ? 'Chọn khu vực' : 'Chưa có khu vực đang hoạt động'} />
+                <Select.Icon><ChevronDown size={16} aria-hidden /></Select.Icon>
+              </Select.Trigger>
+              <Select.Positioner className="poi-zone-positioner" positionMethod="fixed" align="start" sideOffset={6} alignItemWithTrigger={false}>
+                <Select.Popup className="poi-zone-popup">
+                  <Select.List>
+                    {zoneOptions.map(option => <Select.Item className="poi-zone-option" key={option.value} value={option.value} disabled={option.disabled}>
+                      <Select.ItemText>{option.label}</Select.ItemText>
+                      <Select.ItemIndicator><Check size={16} aria-hidden /></Select.ItemIndicator>
+                    </Select.Item>)}
+                  </Select.List>
+                </Select.Popup>
+              </Select.Positioner>
+            </Select.Root>
+            {!activeZones.length && <small>Hãy tạo hoặc bật khu vực trong mục Khu vực trước khi lưu địa điểm.</small>}
+          </div>
           <Field label="Danh mục"><select value={draft.category} onChange={event => setDraft({ ...draft, category: event.target.value })}>{Object.entries(categories).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
           <Field label="Độ ưu tiên"><input required type="number" min={0} max={10000} value={draft.priority || 0} onChange={event => setDraft({ ...draft, priority: event.target.valueAsNumber })} /></Field>
           <Field label="Bán kính chung do Admin cấu hình"><input readOnly value={`${draft.geofence_radius_m} m`} /></Field>
         </div>
-        <PoiLocationPicker value={draft.location} zone={data.zones.find(zone => zone.zone_id === draft.zone_id)} disabled={!editable || busy} onChange={location => { setDraft(current => ({ ...current, location })); setDirty(true) }} />
+        <PoiLocationPicker value={draft.location} zone={selectedZone} disabled={!editable || busy || !selectedZone?.is_active} onChange={location => { setDraft(current => ({ ...current, location })); setDirty(true) }} />
         {!original && <><h3>Nội dung tiếng Anh bắt buộc</h3><ContentFields value={draft.content.en} onChange={content => setDraft({ ...draft, content: { en: content } })} /><Notice>POI hoạt động ngay sau khi lưu. Hệ thống tự tạo tác vụ audio tiếng Anh; bạn có thể thay bằng MP3.</Notice></>}
-        {editable && <button className="primary-button">Lưu thông tin</button>}
+        {editable && <button className="primary-button" disabled={!selectedZone?.is_active}>Lưu thông tin</button>}
       </fieldset>{original && <small>Cập nhật: {dateLabel(original.updated_at)}</small>}</form>}
       {tab === 'Nội dung & audio' && original && <PoiContentEditor key={original.poi_id} poi={original} />}
       {tab === 'Hình ảnh' && original && <PoiImages poi={original} />}

@@ -18,6 +18,7 @@ class TelematryEvent(BaseModel):
 
     trigger_source: Optional[str] = None
     audio_tier: Optional[str] = None
+    duration_ms: int | None = Field(default=None, ge=0, le=86_400_000)
 
     occurred_at: datetime
 

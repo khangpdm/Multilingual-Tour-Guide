@@ -458,7 +458,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (isDemoMode) {
           await Promise.resolve();
           if (!closed) {
-            setPoiList(POIS);
+            setPoiList(POIS.map(poi => ({ ...poi, geofence_radius_m: poi.activationRadius })));
             setPoiLoadError(false);
           }
           return;

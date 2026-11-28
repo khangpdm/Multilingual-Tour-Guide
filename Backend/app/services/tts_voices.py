@@ -1,0 +1,18 @@
+EDGE_VOICES = {
+    "en": "en-US-AriaNeural",
+    "vi": "vi-VN-HoaiMyNeural",
+    "ja": "ja-JP-NanamiNeural",
+    "ko": "ko-KR-SunHiNeural",
+    "zh": "zh-CN-XiaoxiaoNeural",
+    "th": "th-TH-PremwadeeNeural",
+    "fr": "fr-FR-DeniseNeural",
+    "de": "de-DE-KatjaNeural",
+    "es": "es-ES-ElviraNeural",
+    "id": "id-ID-GadisNeural",
+    "ru": "ru-RU-SvetlanaNeural",
+    "pt": "pt-BR-FranciscaNeural",
+    "it": "it-IT-ElsaNeural",
+    "hi": "hi-IN-SwaraNeural",
+    "ar": "ar-SA-ZariyahNeural",
+    "tr": "tr-TR-EmelNeural",
+}

@@ -4,7 +4,7 @@ import re
 import secrets
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 
 from app.core.state import mutation_lock
 from app.core.utils import audit, fail, get_record, identifier, now, public, update_record
@@ -66,6 +66,7 @@ def saveable_content_poi(poi_id, version):
 
 
 def validate_zone(zone_id, location):
+    database.lock_zone(zone_id)
     zone = get_record("zones", zone_id)
     if not zone.get("is_active"):
         fail(422, "INACTIVE_ZONE", "Choose an active zone.")
@@ -147,6 +148,13 @@ def edit_content(poi_id: str, locale: str, body: ContentPatch, background: Backg
         content = {**previous, **fields.model_dump(), "is_edited": True, "updated_at": now()}
         if content.get("audio_source") == "TTS" and fields.text != previous.get("text"):
             content.update(audio_url=None, audio_sha256=None, audio_source=None)
+        if locale == "en" and not existing.get("is_archived") and (content.get("audio_url") or "").startswith("/admin/assets/"):
+            try:
+                asset_path(content["audio_url"], missing_status=404)
+            except HTTPException as error:
+                if error.status_code != 404:
+                    raise
+                content.update(audio_url=None, audio_sha256=None, audio_source=None)
         after = update_record("pois", poi_id, {"content." + locale: content, "last_modified_by": user["user_id"]}, user, "poi.content_edit")
         tasks = enqueue(after, ["en", locale], user, background) if not after.get("is_archived") else []
         return {**poi_public(after), "tasks_created": tasks}

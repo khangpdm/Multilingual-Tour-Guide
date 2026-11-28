@@ -1,20 +1,23 @@
 import { toast } from 'sonner'
 import { useEffect, useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, listAll } from '../../admin/api'
 import { dateLabel, poiName, useAdmin } from '../../admin/store'
-import type { OfflineRelease } from '../../admin/types'
+import type { OfflineRelease as Release } from '../../admin/types'
 import { downloadApi, Empty, Field, Heading, Notice, usePagination } from '../../shared/ui'
 import { categories, publicationIssues } from '../places/PoiReview'
 
 const statusLabels: Record<string, string> = { building: 'Đang đóng gói', ready: 'Sẵn sàng', published: 'Đang phát hành', superseded: 'Đã thay thế / thu hồi', failed: 'Thất bại' }
 const sizeLabel = (size: number | null) => size == null ? '—' : `${(size / 1024 / 1024).toFixed(2)} MB`
+type OfflineRelease = Release & { audio_fallback_counts?: Record<string, number> | null }
 
 export function OfflinePacks() {
   const navigate = useNavigate()
-  const { data, can, mode } = useAdmin()
+  const { data, can, mode, capabilities, reload } = useAdmin()
   const [releases, setReleases] = useState<OfflineRelease[]>([])
-  const [zoneId, setZoneId] = useState('')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedZone = searchParams.get('zone')
+  const zoneId = data.zones.some(zone => zone.is_active && zone.zone_id === requestedZone) ? requestedZone ?? '' : ''
   const [locales, setLocales] = useState<string[]>(['en'])
 
   const [busy, setBusy] = useState(false)
@@ -24,6 +27,12 @@ export function OfflinePacks() {
   const [refresh, setRefresh] = useState(0)
   const pagination = usePagination(releases.filter(item => !filter || item.status === filter))
   const selected = data.pois.filter(poi => poi.zone_id === zoneId && poi.status === 'active')
+  const fallbackPreview = locales.filter(locale => locale !== 'en').map(locale => ({
+    locale,
+    count: selected.filter(poi => !poi.content[locale]?.audio_url).length,
+  })).filter(item => item.count > 0)
+  const languageLabel = (locale: string) => data.languages.find(language => language.code === locale)?.native_name || locale.toUpperCase()
+  const canQueueEnglish = capabilities.tts && selected.some(poi => poi.content.en?.text && !poi.content.en.audio_url)
   const problems = selected.map(poi => ({ poi, issues: publicationIssues(poi, ['en']).map(issue => issue === 'Chọn danh mục chuẩn.' ? `Danh mục ${poi.category ? `“${poi.category}”` : 'chưa được chọn'} không hợp lệ. Chọn một trong các danh mục: ${Object.values(categories).join(', ')}.` : issue) })).filter(item => item.issues.length > 0)
   const problemCount = problems.reduce((total, item) => total + item.issues.length, 0)
   useEffect(() => {
@@ -46,7 +55,7 @@ export function OfflinePacks() {
     setBusy(true)
     try {
       const result = await api<OfflineRelease>('/admin/offline-packs', { method: 'POST', body: JSON.stringify({ zone_id: zoneId, locales }) })
-      toast.success(`Đã tạo phiên bản ${result.version}. Đang đóng gói dữ liệu và tài nguyên thật.`)
+      toast.success(`Đã tạo phiên bản ${result.version}. Hệ thống đang đóng gói.`)
       setRefresh(value => value + 1)
     } catch (error) { toast.error((error as Error).message) } finally { setBusy(false) }
   }
@@ -59,6 +68,16 @@ export function OfflinePacks() {
       setRefresh(value => value + 1)
     } catch (error) { toast.error((error as Error).message) } finally { setBusy(false) }
   }
+  async function queueEnglish() {
+    setBusy(true)
+    try {
+      const { tasks_created } = await api<{ tasks_created: string[] }>(
+        `/admin/offline-packs/zones/${encodeURIComponent(zoneId)}/queue-english`, { method: 'POST' },
+      )
+      toast.success(tasks_created.length ? `Đã xếp hàng tạo ${tasks_created.length} audio tiếng Anh.` : 'Không có tác vụ mới cần tạo.')
+      await reload()
+    } catch (error) { toast.error((error as Error).message) } finally { setBusy(false) }
+  }
   async function download(path: string, name: string) {
     try { await downloadApi(path, name) } catch (error) { toast.error((error as Error).message) }
   }
@@ -68,12 +87,17 @@ export function OfflinePacks() {
     {loadError && <Notice>{loadError}</Notice>}
     {mode !== 'live' && <Notice>Gói offline chỉ hoạt động khi kết nối API và database thật.</Notice>}
     {can('offline.manage') && <form className="panel admin-form" onSubmit={create}><h2>Tạo phiên bản mới</h2><fieldset disabled={busy || mode !== 'live'}>
-      <Field label="Khu vực"><select required value={zoneId} onChange={event => setZoneId(event.target.value)}><option value="">Chọn khu vực đang bật</option>{data.zones.filter(zone => zone.is_active).map(zone => <option key={zone.zone_id} value={zone.zone_id}>{zone.name}</option>)}</select></Field>
+      <Field label="Khu vực"><select required value={zoneId} onChange={event => setSearchParams(event.target.value ? { zone: event.target.value } : {}, { replace: true })}><option value="">Chọn khu vực đang bật</option>{data.zones.filter(zone => zone.is_active).map(zone => <option key={zone.zone_id} value={zone.zone_id}>{zone.name}</option>)}</select></Field>
       <div className="admin-actions">{data.languages.filter(language => language.is_active).map(language => <label className="admin-check" key={language.code}><input type="checkbox" disabled={language.code === 'en'} checked={language.code === 'en' || locales.includes(language.code)} onChange={event => setLocales(event.target.checked ? [...locales, language.code] : locales.filter(value => value !== language.code))} />{language.native_name}</label>)}</div>
       <p>{selected.length} địa điểm đang công khai · {locales.length} ngôn ngữ. Gói chung chứa ảnh và thông tin POI; mỗi gói ngôn ngữ chứa nội dung và MP3.</p>
+      <p>{can('offline.publish') ? 'Gói sẽ tự phát hành và thay thế phiên bản hiện hành sau khi đóng gói và kiểm tra thành công.' : 'Gói sẽ chờ người có quyền phát hành sau khi đóng gói.'}</p>
+      {problems.length === 0 && fallbackPreview.length > 0 && <Notice>
+        Thiếu audio theo ngôn ngữ đã chọn. Gói sẽ dùng audio tiếng Anh cho {fallbackPreview.map(({ locale, count }) => `${count} POI ở bản ${languageLabel(locale)}`).join(', ')}.
+      </Notice>}
       {problems.length > 0 && <section className="offline-problems" aria-label="Các mục cần hoàn thiện" aria-live="polite">
         <h3>{problems.length} địa điểm cần hoàn thiện · {problemCount} mục còn thiếu hoặc chưa hợp lệ</h3>
         <p>Chưa thể tạo gói offline. Mở từng địa điểm dưới đây để sửa các mục được liệt kê.</p>
+        {canQueueEnglish && <button className="secondary-button" type="button" onClick={() => void queueEnglish()}>Tạo audio tiếng Anh còn thiếu</button>}
         <div className="offline-problem-list">{problems.map(({ poi, issues }) => <article className="offline-problem-item" key={poi.poi_id}>
           <div className="offline-problem-heading"><strong>{poiName(poi)}</strong>{can('poi.view') && <button type="button" className="text-button" onClick={() => navigate(`/pois/${poi.poi_id}`)}>Mở địa điểm để sửa →</button>}</div>
           <ul>{issues.map(issue => <li key={issue}>{issue}</li>)}</ul>
@@ -85,6 +109,9 @@ export function OfflinePacks() {
       {loading ? <Empty text="Đang tải phiên bản…" /> : <div className="offline-release-list">{pagination.rows.map(release => <article className="offline-release" key={release.id}>
         <header><div><h3>{data.zones.find(zone => zone.zone_id === release.zone_id)?.name || release.zone_id} · v{release.version}</h3><small>{release.poi_count} POI · Tạo {dateLabel(release.created_at)}</small></div><span className={`offline-status offline-${release.status}`}>{statusLabels[release.status]}</span></header>
         {release.outdated && <Notice>Nguồn POI đã thay đổi. Phiên bản này đã lỗi thời; hãy tạo gói mới.</Notice>}{release.error && <p className="admin-error" role="alert">{release.error}</p>}
+        {Object.entries(release.audio_fallback_counts ?? {}).filter(([, count]) => count > 0).map(([locale, count]) => <Notice key={locale}>
+          Bản {languageLabel(locale)} dùng audio tiếng Anh dự phòng cho {count} POI.
+        </Notice>)}
         <div className="offline-parts"><div><strong>Dữ liệu chung</strong><span>{sizeLabel(release.common_size_bytes)}</span>{release.common_file_url && release.status !== 'failed' && <button className="text-button" onClick={() => void download(release.common_file_url!, `${release.id}-common.zip`)}>Tải ZIP</button>}</div>{release.languages.map(part => <div key={part.language_code}><strong>{part.language_code.toUpperCase()}</strong><span>{sizeLabel(part.size_bytes)}</span><small>{statusLabels[part.status] || part.status}</small>{part.file_url && !['failed', 'building'].includes(release.status) && <button className="text-button" onClick={() => void download(part.file_url!, `${release.id}-${part.language_code}.zip`)}>Tải ZIP</button>}</div>)}</div>
         <details><summary>Mã kiểm tra SHA-256</summary><p className="checksum">Chung: {release.common_sha256 || 'Chưa có'}</p>{release.languages.map(part => <p className="checksum" key={part.language_code}>{part.language_code}: {part.sha256 || 'Chưa có'}</p>)}</details>
         <div className="admin-actions">{can('offline.publish') && release.status === 'ready' && <button disabled={busy || release.outdated} className="primary-button" onClick={() => void change(release, 'publish')}>Phát hành phiên bản</button>}{can('offline.publish') && release.status === 'published' && <button disabled={busy} className="danger-button" onClick={() => void change(release, 'withdraw')}>Thu hồi</button>}{release.published_at && <small>Phát hành: {dateLabel(release.published_at)}</small>}</div>

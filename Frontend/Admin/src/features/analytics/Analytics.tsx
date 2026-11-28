@@ -1,123 +1,203 @@
-import { toast } from 'sonner'
-import { useState, type FormEvent } from 'react'
-import { dateLabel, useAdmin } from '../../admin/store'
-import type { Permission } from '../../admin/types'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import mapboxgl from 'mapbox-gl'
+import 'mapbox-gl/dist/mapbox-gl.css'
 import { api } from '../../admin/api'
-import { downloadApi, downloadCsv, Empty, fieldLabel, Field, Heading, Notice, ResultTable, saveBlob, Status } from '../../shared/ui'
+import { dateLabel, poiName, useAdmin } from '../../admin/store'
+import { Empty, Field, Heading, Notice } from '../../shared/ui'
 
-type Report = { id: string; label: string; path: string; permission: Permission; exportId?: string }
-const reports: Report[] = [
-  { id: 'top', label: 'Top POI', path: '/admin/analytics/poi/top', permission: 'analytics.view_poi_reports', exportId: 'poi_top_plays' },
-  { id: 'qr', label: 'Tỷ lệ QR', path: '/admin/analytics/poi/qr-rate', permission: 'analytics.view_poi_reports', exportId: 'poi_qr_rate' },
-  { id: 'gaps', label: 'Thiếu nội dung / audio', path: '/admin/analytics/poi/content-gaps', permission: 'analytics.view_poi_reports', exportId: 'poi_content_gaps' },
-  { id: 'languages', label: 'Ngôn ngữ theo thiết bị', path: '/admin/analytics/users/language-distribution', permission: 'analytics.view_user_reports', exportId: 'user_language_distribution' },
-  { id: 'offline', label: 'Tải gói offline', path: '/admin/analytics/users/offline-pack-adoption', permission: 'analytics.view_user_reports', exportId: 'offline_pack_adoption' },
-  { id: 'cache', label: 'Cache-hit-rate', path: '/admin/analytics/system/cache-hit-rate', permission: 'analytics.view_overview', exportId: 'cache_hit_rate' },
-  { id: 'heatmap', label: 'Heatmap theo giờ', path: '/admin/heatmap', permission: 'heatmap.view_live' },
-  { id: 'trend', label: 'Xu hướng lượt ghé', path: '/admin/analytics/heatmap/trend', permission: 'heatmap.view_trend', exportId: 'heatmap_trend' },
-]
-type RecordValue = Record<string, unknown>
-type Point = { poi_id: string; name: string; lat: number; lng: number; visit_count: number; level: string }
+type Totals = { audio_plays: number; qr_scans: number; unique_devices: number; pack_downloads: number; total_duration_ms: number | null; average_duration_ms: number | null }
+type Point = Totals & { poi_id: string; name: string; lng: number; lat: number; languages: { language_code: string | null; audio_plays: number }[] }
+type Report = { totals: Totals; previous: Totals; series: { day: string; audio_plays: number; qr_scans: number; pack_downloads: number }[]; top: Point[]; points: Point[]; updated_at: string }
+
+const environment = (import.meta as ImportMeta & { env: Record<string, string> }).env
 const dateKey = (offset = 0) => new Date(Date.now() + 7 * 3600000 - offset * 86400000).toISOString().slice(0, 10)
-function flatten(result: RecordValue): RecordValue[] {
-  for (const key of ['items', 'distribution', 'series', 'points']) if (Array.isArray(result[key])) return result[key] as RecordValue[]
-  if (Array.isArray(result.missing_translation)) return [
-    ...(result.missing_translation as RecordValue[]).map(item => ({ ...item, type: 'missing_translation' })),
-    ...((result.missing_pregen_audio || []) as RecordValue[]).map(item => ({ ...item, type: 'missing_pregen_audio' })),
-  ]
-  return [Object.fromEntries(Object.entries(result).filter(([, value]) => typeof value !== 'object' || value === null))]
-}
-function SpatialHeatmap({ points }: { points: Point[] }) {
-  if (!points.length) return <Empty text="Không có POI công khai đạt tối thiểu 5 lượt ghé trong giờ đã chọn." />
-  const minLng = Math.min(...points.map(point => point.lng)), maxLng = Math.max(...points.map(point => point.lng))
-  const minLat = Math.min(...points.map(point => point.lat)), maxLat = Math.max(...points.map(point => point.lat))
-  const colors: Record<string, string> = { low: '#247c7a', medium: '#c18b20', high: '#c5523c', unknown: '#697885' }
-  return <><div className="spatial-map"><svg viewBox="0 0 800 360" role="img" aria-label="Phân bố POI theo tọa độ, không phải bản đồ nền"><defs><pattern id="map-grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="#d5e3df" /></pattern></defs><rect width="800" height="360" fill="url(#map-grid)" />{points.map(point => { const horizontal = maxLng === minLng ? 400 : 60 + (point.lng - minLng) / (maxLng - minLng) * 680; const vertical = maxLat === minLat ? 180 : 300 - (point.lat - minLat) / (maxLat - minLat) * 240; return <g key={point.poi_id}><circle cx={horizontal} cy={vertical} r={12 + Math.min(24, Math.sqrt(point.visit_count))} fill={colors[point.level] || colors.unknown} fillOpacity="0.35" /><circle cx={horizontal} cy={vertical} r="5" fill={colors[point.level] || colors.unknown}><title>{point.name}: {point.visit_count} lượt · {point.level}</title></circle><text x={horizontal} y={vertical - 32} textAnchor="middle" fontSize="12">{point.name}</text></g> })}<text x="12" y="22" fontSize="12">Bắc ↑ · Đông →</text></svg></div><p className="page-subtitle">Sơ đồ tọa độ, không phải bản đồ nền. Mức độ do server tính từ cùng giờ trong 28 ngày trước; dưới 7 ngày dữ liệu là “Chưa đủ dữ liệu”.</p><div className="admin-actions">{['low', 'medium', 'high', 'unknown'].map(level => <Status key={level} value={level} />)}</div></>
-}
-function TrendChart({ rows }: { rows: RecordValue[] }) {
-  if (!rows.length) return <Empty />
-  const values = rows.map(row => Number(row.visit_count) || 0)
-  const maximum = Math.max(1, ...values)
-  const coordinates = values.map((value, index) => `${40 + index / Math.max(1, values.length - 1) * 720},${220 - value / maximum * 180}`).join(' ')
-  return <div className="trend-chart"><svg viewBox="0 0 800 260" role="img" aria-label={`Xu hướng lượt ghé, cao nhất ${maximum}`}><path d="M40 20V220H770" fill="none" stroke="#ccd9d5" /><polyline points={coordinates} fill="none" stroke="#247c7a" strokeWidth="3" /><text x="5" y="35" fontSize="12">{maximum}</text><text x="40" y="248" fontSize="11">{dateLabel(String(rows[0].bucket_start))}</text><text x="770" y="248" textAnchor="end" fontSize="11">{dateLabel(String(rows[rows.length - 1].bucket_start))}</text></svg><small>Múi giờ UTC+7 · Mốc không có lượt ghé được server trả 0.</small></div>
-}
-export function Analytics() {
-  const { data, mode, can } = useAdmin()
-  const available = reports.filter(report => can(report.permission))
-  const [reportId, setReportId] = useState(available[0]?.id || '')
-  const report = available.find(item => item.id === reportId)
-  const [from, setFrom] = useState(dateKey(29))
-  const [to, setTo] = useState(dateKey())
-  const [date, setDate] = useState(dateKey())
-  const [hour, setHour] = useState(Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', hourCycle: 'h23' }).format(new Date())))
-  const [metric, setMetric] = useState('audio_plays')
-  const [language, setLanguage] = useState('vi')
-  const [limit, setLimit] = useState(10)
-  const [days, setDays] = useState(30)
-  const [targetType, setTargetType] = useState('poi_id')
-  const [target, setTarget] = useState('')
-  const [granularity, setGranularity] = useState('day')
-  const [zone, setZone] = useState('')
-  const [format, setFormat] = useState('csv')
-  const [result, setResult] = useState<RecordValue | null>(null)
-  const [loadedQuery, setLoadedQuery] = useState('')
+const metrics: [keyof Totals, string][] = [
+  ['audio_plays', 'Lượt nghe'], ['qr_scans', 'Lượt quét QR'], ['unique_devices', 'Thiết bị ẩn danh'],
+  ['pack_downloads', 'Lượt tải gói ngoại tuyến'], ['total_duration_ms', 'Tổng thời lượng nghe'],
+  ['average_duration_ms', 'Thời lượng nghe trung bình'],
+]
+const series = [
+  { key: 'audio_plays', label: 'Lượt nghe', color: '#087fa7' },
+  { key: 'qr_scans', label: 'Lượt quét QR', color: '#11845a' },
+  { key: 'pack_downloads', label: 'Lượt tải', color: '#a34c1b' },
+] as const
+const format = (key: keyof Totals, value: number | null) =>
+  value === null ? 'Chưa có dữ liệu' : key.endsWith('_ms') ? `${(value / 1000).toLocaleString('vi-VN', { maximumFractionDigits: 1 })} giây` : value.toLocaleString('vi-VN')
 
-  const [pending, setPending] = useState(false)
-  function params() {
-    const query = new URLSearchParams()
-    if (reportId === 'heatmap') { query.set('date', date); query.set('hour', String(hour)) }
-    else if (reportId === 'offline') query.set('days', String(days))
-    else if (reportId === 'gaps') { if (zone) query.set('zone_id', zone); query.set('limit', String(limit)) }
-    else { query.set('from', `${from}T00:00:00+07:00`); query.set('to', `${to}T23:59:59.999+07:00`) }
-    if (['top', 'qr', 'heatmap'].includes(reportId)) query.set('lang', language)
-    if (['top', 'qr'].includes(reportId)) query.set('limit', String(limit))
-    if (reportId === 'top') query.set('metric', metric)
-    if (reportId === 'trend') { query.set(targetType, target); query.set('granularity', granularity) }
-    return query
-  }
-  function validate() {
-    if (!report) throw new Error('Không có quyền xem báo cáo này.')
-    if (!['heatmap', 'offline', 'gaps'].includes(reportId)) {
-      const length = (new Date(to).getTime() - new Date(from).getTime()) / 86400000 + 1
-      if (!Number.isFinite(length) || length < 1 || length > (reportId === 'trend' && granularity === 'hour' ? 14 : 366)) throw new Error('Khoảng ngày không hợp lệ: tối đa 366 ngày; xu hướng theo giờ tối đa 14 ngày.')
+function Heatmap({ points, onSelect }: { points: Point[]; onSelect: (id: string) => void }) {
+  const container = useRef<HTMLDivElement>(null)
+  const [error, setError] = useState('')
+  const selection = useRef(onSelect)
+  selection.current = onSelect
+
+  useEffect(() => {
+    if (!container.current || !points.length) return
+    const accessToken = environment.VITE_MAPBOX_ACCESS_TOKEN?.trim()
+    if (!accessToken) { setError('Chưa cấu hình khóa Mapbox.'); return }
+    let map: mapboxgl.Map
+    try {
+      map = new mapboxgl.Map({
+        accessToken, container: container.current, style: 'mapbox://styles/mapbox/streets-v12',
+        center: [points[0].lng, points[0].lat], zoom: 13, scrollZoom: false,
+      })
+    } catch {
+      setError('Không thể khởi tạo bản đồ.'); return
     }
-    if (reportId === 'trend' && !target.trim()) throw new Error('Nhập đúng một POI ID hoặc Zone ID.')
-  }
-  async function load(event: FormEvent) {
-    event.preventDefault(); setResult(null); setPending(true)
-    try {
-      validate(); const query = params(); setLoadedQuery(query.toString())
-      if (mode === 'live') setResult(await api<RecordValue>(`${report!.path}?${query}`))
-      else if (reportId === 'gaps') {
-        const pois = data.pois.filter(poi => poi.status === 'active' && (!zone || poi.zone_id === zone))
-        const codes = data.languages.filter(item => item.is_active).map(item => item.code)
-        const missing_translation = pois.map(poi => ({ poi_id: poi.poi_id, missing_locales: codes.filter(code => !poi.content[code]?.text) })).filter(item => item.missing_locales.length)
-        const missing_pregen_audio = pois.map(poi => ({ poi_id: poi.poi_id, missing_locales: codes.filter(code => !poi.content[code]?.audio_url) })).filter(item => item.missing_locales.length)
-        setResult({ missing_translation: missing_translation.slice(0, limit), missing_pregen_audio: missing_pregen_audio.slice(0, limit), totals: { pois_checked: pois.length, pois_with_gaps: new Set([...missing_translation, ...missing_pregen_audio].map(item => item.poi_id)).size } })
-      } else toast.info('Chưa có dữ liệu cho báo cáo này.')
-    } catch (error) { toast.error((error as Error).message) } finally { setPending(false) }
-  }
-  const exportable = report?.exportId && can('analytics.export') && (reportId !== 'trend' || can('heatmap.export')) && (reportId !== 'top' || metric === 'audio_plays')
-  const stale = loadedQuery !== params().toString()
-  async function exportReport() {
+    map.on('error', () => setError('Không tải được một phần bản đồ Mapbox.'))
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }))
+    map.on('load', () => {
+      map.addSource('listening-pois', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: points.map(point => ({
+          type: 'Feature', geometry: { type: 'Point', coordinates: [point.lng, point.lat] },
+          properties: { id: point.poi_id, plays: point.audio_plays },
+        })) },
+      })
+      const maxPlays = Math.max(1, ...points.map(point => point.audio_plays))
+      map.addLayer({ id: 'listening-heat', type: 'heatmap', source: 'listening-pois', paint: {
+        'heatmap-weight': ['/', ['get', 'plays'], maxPlays], 'heatmap-radius': 34, 'heatmap-opacity': 0.75,
+      } })
+      map.addLayer({ id: 'listening-markers', type: 'circle', source: 'listening-pois',
+        paint: { 'circle-radius': 6, 'circle-color': '#076582', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } })
+      map.on('click', 'listening-markers', event => {
+        const feature = event.features?.[0] as { properties?: { id?: string } } | undefined
+        const id = feature?.properties?.id
+        if (typeof id === 'string') selection.current(id)
+      })
+      map.on('mouseenter', 'listening-markers', () => { map.getCanvas().style.cursor = 'pointer' })
+      map.on('mouseleave', 'listening-markers', () => { map.getCanvas().style.cursor = '' })
+      const bounds = new mapboxgl.LngLatBounds()
+      points.forEach(point => bounds.extend([point.lng, point.lat]))
+      map.fitBounds(bounds, { padding: 45, maxZoom: 15, duration: 0 })
+    })
+    const observer = new ResizeObserver(() => map.resize())
+    observer.observe(container.current)
+    return () => { observer.disconnect(); map.remove() }
+  }, [points])
+
+  if (!points.length) return <Empty text="Chưa có lượt nghe để vẽ bản đồ nhiệt." />
+  return <>{error && <p className="admin-error" role="alert">{error}</p>}
+    <div className="analytics-map" ref={container} aria-label="Bản đồ nhiệt lượt nghe theo vị trí điểm tham quan" /></>
+}
+
+export function Analytics() {
+  const { data, mode } = useAdmin()
+  const [start, setStart] = useState(dateKey(6))
+  const [end, setEnd] = useState(dateKey())
+  const [zone, setZone] = useState('')
+  const [poi, setPoi] = useState('')
+  const [lang, setLang] = useState('')
+  const [trigger, setTrigger] = useState('')
+  const [query, setQuery] = useState(() => new URLSearchParams({ start, end }).toString())
+  const [request, setRequest] = useState(0)
+  const [report, setReport] = useState<Report | null>(null)
+  const [error, setError] = useState('')
+  const [pending, setPending] = useState(true)
+  const [selectedId, setSelectedId] = useState('')
+  const [mapKey, setMapKey] = useState(0)
+  const [showHeatmap, setShowHeatmap] = useState(false)
+  const [heatmapPoints, setHeatmapPoints] = useState<Point[]>([])
+  const lastHeatmap = useRef({ query: '', request: -1, time: 0 })
+
+  useEffect(() => {
+    if (mode !== 'live') return
+    let cancelled = false
+    let fetching = false
+    async function load() {
+      if (fetching) return
+      fetching = true
+      try {
+        const result = await api<Report>(`/admin/analytics/dashboard?${query}`)
+        if (!cancelled) {
+          setReport(result)
+          setError('')
+          const time = Date.now()
+          const previous = lastHeatmap.current
+          if (previous.query !== query || previous.request !== request || time - previous.time >= 15 * 60 * 1000) {
+            lastHeatmap.current = { query, request, time }
+            setHeatmapPoints(result.points)
+          }
+        }
+      } catch (reason) {
+        if (!cancelled) setError((reason as Error).message)
+      } finally {
+        fetching = false
+        if (!cancelled) setPending(false)
+      }
+    }
+    void load()
+    const timer = window.setInterval(() => void load(), 5 * 60 * 1000)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [mode, query, request])
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    const params = new URLSearchParams({ start, end })
+    for (const [key, value] of [['zone_id', zone], ['poi_id', poi], ['lang', lang], ['trigger', trigger]]) {
+      if (value) params.set(key, value)
+    }
     setPending(true)
-    try {
-      validate(); if (!result || stale || !exportable) throw new Error('Tải báo cáo với bộ lọc hiện tại trước khi xuất.')
-      if (mode === 'live') { const query = new URLSearchParams(loadedQuery); query.set('report', report!.exportId!); query.set('format', format); await downloadApi(`/admin/analytics/export?${query}`, `${report!.exportId}.${format}`) }
-      else if (format === 'xlsx') throw new Error('Chỉ có thể xuất CSV hoặc JSON trong chế độ hiện tại.')
-      else if (format === 'json') saveBlob(new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' }), 'demo-content-gaps.json')
-      else { const rows = flatten(result); const columns = [...new Set(rows.flatMap(row => Object.keys(row)))]; downloadCsv('demo-content-gaps.csv', [columns, ...rows.map(row => columns.map(column => typeof row[column] === 'object' ? JSON.stringify(row[column]) : String(row[column] ?? '')))]) }
-    } catch (error) { toast.error((error as Error).message) } finally { setPending(false) }
+    setSelectedId('')
+    setQuery(params.toString())
+    setRequest(current => current + 1)
   }
-  if (!report) return <Empty text="Bạn không có quyền xem báo cáo." />
-  const summary = result ? Object.entries(result).filter(([key, value]) => typeof value === 'number' && key !== 'hour') : []
-  return <><Heading title="Phân tích & heatmap" detail="Báo cáo tổng hợp từ backend; múi giờ Asia/Ho_Chi_Minh (UTC+7)."><select className="select-control" aria-label="Định dạng báo cáo" value={format} onChange={event => setFormat(event.target.value)}><option value="csv">CSV</option><option value="xlsx">XLSX</option><option value="json">JSON</option></select>{exportable && <button className="secondary-button" disabled={pending || !result || stale} onClick={() => void exportReport()}>Xuất báo cáo</button>}</Heading><section className="panel"><div className="tabs">{available.map(item => <button disabled={pending} key={item.id} className={item.id === reportId ? 'tab-active' : ''} onClick={() => { setReportId(item.id); setResult(null); setFrom(dateKey(item.id === 'cache' ? 6 : 29)); setTo(dateKey()); setLimit(item.id === 'gaps' || item.id === 'qr' ? 50 : 10) }}>{item.label}</button>)}</div><form className="filter-row" onSubmit={load}>
-    {reportId === 'heatmap' ? <><Field label="Ngày"><input required type="date" value={date} onChange={event => setDate(event.target.value)} /></Field><Field label="Giờ (UTC+7)"><input required type="number" min="0" max="23" step="1" value={hour} onChange={event => setHour(event.target.valueAsNumber)} /></Field></> : reportId === 'offline' ? <Field label="Số ngày (1–90)"><input required type="number" min="1" max="90" value={days} onChange={event => setDays(event.target.valueAsNumber)} /></Field> : reportId !== 'gaps' && <><Field label="Từ ngày"><input required type="date" value={from} onChange={event => setFrom(event.target.value)} /></Field><Field label="Đến ngày"><input required type="date" min={from} value={to} onChange={event => setTo(event.target.value)} /></Field></>}
-    {reportId === 'top' && <Field label="Chỉ số"><select value={metric} onChange={event => setMetric(event.target.value)}><option value="audio_plays">Lượt nghe</option><option value="qr_scans">Quét QR</option><option value="visits">Lượt ghé</option></select></Field>}
-    {['top', 'qr', 'gaps'].includes(reportId) && <Field label="Số kết quả"><input required type="number" min="1" max={reportId === 'gaps' ? 200 : 50} value={limit} onChange={event => setLimit(event.target.valueAsNumber)} /></Field>}
-    {['top', 'qr', 'heatmap'].includes(reportId) && <Field label="Ngôn ngữ tên POI"><input required pattern="[a-z]{2,3}(-[A-Z]{2})?" value={language} onChange={event => setLanguage(event.target.value)} /></Field>}
-    {reportId === 'gaps' && <Field label="Zone ID (tùy chọn)"><input value={zone} onChange={event => setZone(event.target.value)} /></Field>}
-    {reportId === 'trend' && <><Field label="Đối tượng"><select value={targetType} onChange={event => { setTargetType(event.target.value); setTarget('') }}><option value="poi_id">Một POI</option><option value="zone_id">Một khu vực</option></select></Field><Field label={targetType}><input required value={target} onChange={event => setTarget(event.target.value)} /></Field><Field label="Gom theo"><select value={granularity} onChange={event => setGranularity(event.target.value)}><option value="hour">Giờ (tối đa 14 ngày)</option><option value="day">Ngày (tối đa 366 ngày)</option></select></Field></>}
-    <button className="primary-button" disabled={pending}>{pending ? 'Đang tải…' : 'Xem báo cáo'}</button></form>
-    {reportId === 'languages' && <Notice>Mỗi thiết bị được gán ngôn ngữ nghe nhiều nhất; hòa thì lấy ngôn ngữ gần nhất. Không tính tỷ lệ theo tổng lượt nghe.</Notice>}{reportId === 'qr' && <Notice>Tỷ lệ QR = lượt phát audio từ QR / tổng lượt phát × 100; không phải số lần quét / tổng lượt phát.</Notice>}{reportId === 'cache' && <Notice>MVP chỉ có tier1 và tier3; tier1_5 và tier2 trả 0.0. On-demand/presence thuộc giai đoạn 2.</Notice>}{reportId === 'top' && metric !== 'audio_plays' && <Notice>API xuất hiện chỉ đặc tả top lượt nghe. Có thể xem quét QR/lượt ghé nhưng chưa xuất hai biến thể này.</Notice>}{result && <>{stale && <Notice>Bộ lọc đã thay đổi. Nhấn “Xem báo cáo” để cập nhật; dữ liệu bên dưới thuộc lần tải trước.</Notice>}<div className="admin-kpis">{summary.map(([key, value]) => <div className="mini-kpi" key={key}><span>{fieldLabel(key)}</span><strong>{String(value)}</strong></div>)}</div>{result.totals && <Notice>{Object.entries(result.totals as RecordValue).map(([key, value]) => `${fieldLabel(key)}: ${value}`).join(' · ')}</Notice>}{reportId === 'heatmap' && <SpatialHeatmap points={(result.points || []) as Point[]} />}{reportId === 'trend' && <TrendChart rows={(result.series || []) as RecordValue[]} />}<ResultTable rows={flatten(result)} /></>}{!result && <Empty text="Chọn bộ lọc và nhấn Xem báo cáo." />}</section></>
+
+  const selected = report?.points.find(point => point.poi_id === selectedId) ?? report?.top.find(point => point.poi_id === selectedId)
+  const max = Math.max(1, ...(report?.series ?? []).flatMap(day => series.map(metric => day[metric.key])))
+  if (mode !== 'live') return <Empty text="Đăng nhập để xem số liệu du lịch thực tế." />
+  return <>
+    <Heading title="Phân tích & bản đồ nhiệt" detail="Thống kê trên toàn bộ điểm tham quan · UTC+7">
+      {report && <small>Cập nhật lúc {dateLabel(report.updated_at)}</small>}
+    </Heading>
+    <section className="panel">
+      <form className="filter-row" onSubmit={submit}>
+        <Field label="Khoảng thời gian"><select value="" onChange={event => { setStart(dateKey(Number(event.target.value))); setEnd(dateKey()) }}>
+          <option value="" disabled>Chọn khoảng nhanh</option><option value="0">Hôm nay</option><option value="6">7 ngày</option><option value="29">30 ngày</option>
+        </select></Field>
+        <Field label="Từ ngày"><input type="date" required max={dateKey()} value={start} onChange={event => setStart(event.target.value)} /></Field>
+        <Field label="Đến ngày"><input type="date" required min={start} max={dateKey()} value={end} onChange={event => setEnd(event.target.value)} /></Field>
+        <Field label="Khu vực"><select value={zone} onChange={event => { setZone(event.target.value); setPoi('') }}>
+          <option value="">Tất cả khu vực</option>{data.zones.map(item => <option key={item.zone_id} value={item.zone_id}>{item.name}</option>)}
+        </select></Field>
+        <Field label="Điểm tham quan"><select value={poi} onChange={event => setPoi(event.target.value)}>
+          <option value="">Tất cả điểm</option>{data.pois.filter(item => !zone || item.zone_id === zone).map(item => <option key={item.poi_id} value={item.poi_id}>{poiName(item)}</option>)}
+        </select></Field>
+        <Field label="Ngôn ngữ"><select value={lang} onChange={event => setLang(event.target.value)}>
+          <option value="">Tất cả ngôn ngữ</option>{data.languages.map(item => <option key={item.code} value={item.code}>{item.native_name}</option>)}
+        </select></Field>
+        <Field label="Cách kích hoạt"><select value={trigger} onChange={event => setTrigger(event.target.value)}>
+          <option value="">Tất cả</option><option value="geofence">Vùng địa lý</option><option value="qr_scan">Quét QR</option><option value="manual_tap">Chạm thủ công</option>
+        </select></Field>
+        <button className="primary-button" disabled={pending}>{pending ? 'Đang tải…' : 'Áp dụng bộ lọc'}</button>
+      </form>
+      {error && <p role="alert" className="admin-error">{error}</p>}
+      {report && <>
+        <div className="admin-kpis">{metrics.map(([key, label]) => <article className="mini-kpi" key={key}>
+          <span>{label}</span><strong>{format(key, report.totals[key])}</strong><small>Kỳ trước: {format(key, report.previous[key])}</small>
+        </article>)}</div>
+        <div className="tabs"><button type="button" className={!showHeatmap ? 'tab-active' : ''} onClick={() => setShowHeatmap(false)}>Tổng quan</button>
+          <button type="button" className={showHeatmap ? 'tab-active' : ''} onClick={() => setShowHeatmap(true)}>Bản đồ nhiệt</button></div>
+        {showHeatmap ? <><Heatmap key={mapKey} points={heatmapPoints} onSelect={setSelectedId} />
+          {!!heatmapPoints.length && <button type="button" className="secondary-button" onClick={() => setMapKey(key => key + 1)}>Tải lại bản đồ</button>}</>
+          : report.totals.unique_devices === 0 ? <Empty text="Chưa có dữ liệu trong khoảng thời gian đã chọn." /> : <>
+            <div className="trend-chart"><svg viewBox="0 0 800 230" role="img" aria-label="Biểu đồ lượt nghe, quét QR và tải gói theo ngày">
+              <path d="M40 20V200H770" fill="none" stroke="#ccd9d5" />
+              {series.map(metric => <polyline key={metric.key} fill="none" stroke={metric.color} strokeWidth="3"
+                points={report.series.map((day, index) => `${report.series.length === 1 ? 410 : 40 + index / (report.series.length - 1) * 730},${200 - day[metric.key] / max * 170}`).join(' ')} />)}
+              {report.series.length === 1 && series.map(metric => <circle key={metric.key} cx="410"
+                cy={200 - report.series[0][metric.key] / max * 170} r="4" fill={metric.color} />)}
+              <text x="40" y="224" fontSize="12">{report.series[0]?.day}</text>
+              {report.series.length > 1 && <text x="770" y="224" textAnchor="end" fontSize="12">{report.series.at(-1)?.day}</text>}
+            </svg><div className="chart-legend">{series.map(metric => <span key={metric.key}><i style={{ background: metric.color }} />{metric.label}</span>)}</div></div>
+            <h3>Top 10 điểm tham quan</h3>
+            <div className="table-wrap"><table><thead><tr><th>Điểm tham quan</th><th>Lượt nghe</th><th>Lượt quét QR</th></tr></thead>
+              <tbody>{report.top.map(point => <tr key={point.poi_id}><td><button type="button" className="text-button" onClick={() => setSelectedId(point.poi_id)}>{point.name}</button></td><td>{point.audio_plays}</td><td>{point.qr_scans}</td></tr>)}</tbody></table></div>
+          </>}
+        {selected && <section className="analytics-poi-detail" aria-live="polite"><h3>{selected.name}</h3>
+          <p>{selected.audio_plays} lượt nghe · {selected.qr_scans} lượt quét QR · Thời lượng trung bình {format('average_duration_ms', selected.average_duration_ms)}</p>
+          <Notice>{selected.languages.length ? selected.languages.map(item => `${item.language_code ?? 'Không rõ'}: ${item.audio_plays} lượt nghe`).join(' · ') : 'Chưa có dữ liệu phân bố ngôn ngữ.'}</Notice>
+        </section>}
+      </>}
+    </section>
+  </>
 }

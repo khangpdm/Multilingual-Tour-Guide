@@ -15,6 +15,7 @@ from app.modules.auth.routes import router as auth_router
 from app.modules.languages.routes import router as languages_router
 from app.modules.pois.routes import router as pois_router
 from app.modules.system.routes import router as system_router
+from app.modules.system.analytics import router as analytics_router
 from app.modules.zones.routes import router as zones_router
 from app.modules.media.routes import router as media_router
 from app.modules.audio.routes import router as audio_router
@@ -53,6 +54,7 @@ async def protect_auth_cache(request: Request, call_next):
     return response
 
 app.include_router(system_router)
+app.include_router(analytics_router)
 app.include_router(auth_router)
 app.include_router(zones_router)
 app.include_router(languages_router)

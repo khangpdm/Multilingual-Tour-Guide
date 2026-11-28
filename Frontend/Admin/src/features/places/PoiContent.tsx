@@ -24,6 +24,7 @@ export function PoiContentEditor({ poi }: { poi: Poi }) {
 
   const [locales, setLocales] = useState<string[]>(['en'])
   const [replace, setReplace] = useState(false)
+  const [unavailableAudio, setUnavailableAudio] = useState<string | null>(null)
   const current = poi.content[locale]
   useEffect(() => { if (!dirty) { setDraft(current || emptyContent()); setBaseVersion(poi.content_version) } }, [current, dirty, poi.content_version])
   const enabled = data.languages.some(language => language.code === locale && language.is_active)
@@ -33,9 +34,13 @@ export function PoiContentEditor({ poi }: { poi: Poi }) {
     try {
       const body = { name: draft.name.trim(), address: draft.address?.trim() || null, description: draft.description?.trim() || null, introduction: draft.introduction?.trim() || null, text: draft.text.trim() }
       if (!body.name || !body.text) throw new Error('Tên và kịch bản không được để trống.')
-      await mutate({ permission: 'poi.edit', path: `/admin/pois/${poi.poi_id}/content/${locale}`, method: 'PUT', version: baseVersion, body, action: 'poi.content_edit', target: poi.poi_id, demo: state => ({ ...state, pois: state.pois.map(item => item.poi_id === poi.poi_id ? { ...item, content_version: item.content_version + 1, content: { ...item.content, [locale]: { ...draft, ...body, updated_at: stamp() } } } : item) }) })
+      const result = await mutate<{ tasks_created: string[] }>({ permission: 'poi.edit', path: `/admin/pois/${poi.poi_id}/content/${locale}`, method: 'PUT', version: baseVersion, body, action: 'poi.content_edit', target: poi.poi_id, demo: state => ({ ...state, pois: state.pois.map(item => item.poi_id === poi.poi_id ? { ...item, content_version: item.content_version + 1, content: { ...item.content, [locale]: { ...draft, ...body, updated_at: stamp() } } } : item) }) })
       setDirty(false)
-      toast.success('Đã lưu nội dung. Nếu kịch bản thay đổi, audio TTS cũ được bỏ để tạo lại; audio tải lên được giữ nguyên và cần tự kiểm tra.')
+      if (result?.tasks_created.length && !capabilities.tts) {
+        toast.warning('Đã lưu nội dung. Chưa thể tạo audio vì chưa cấu hình TTS.')
+      } else {
+        toast.success(result?.tasks_created.length ? 'Đã lưu nội dung và tạo tác vụ audio.' : 'Đã lưu nội dung.')
+      }
     } catch (error) { toast.error((error as Error).message) }
   }
   async function upload(file?: File) {
@@ -64,7 +69,9 @@ export function PoiContentEditor({ poi }: { poi: Poi }) {
     
     <form onSubmit={save}><fieldset disabled={!editable || busy}><ContentFields value={draft} onChange={value => { setDraft(value); setDirty(true) }} />{editable && <button className="primary-button">Lưu nội dung {locale.toUpperCase()}{dirty ? ' *' : ''}</button>}</fieldset></form>
     <section className="regenerate-panel"><h3>Audio của {locale.toUpperCase()}</h3>
-      {current?.audio_url ? <><p>Nguồn: {current.audio_source === 'UPLOADED' ? 'MP3 tải lên' : 'TTS'}</p><audio key={current.audio_url} controls preload="metadata" src={assetUrl(current.audio_url)} /><small className="checksum">SHA-256: {current.audio_sha256}</small></> : <Notice>Chưa có audio cho ngôn ngữ này.</Notice>}
+      {current?.audio_url ? <><p>Nguồn: {current.audio_source === 'UPLOADED' ? 'MP3 tải lên' : 'TTS'}</p>{unavailableAudio === current.audio_url
+        ? <Notice>Không tải được MP3. Bạn có thể tải lại file gốc hoặc tạo lại bằng TTS.</Notice>
+        : <audio key={current.audio_url} controls preload="metadata" src={assetUrl(current.audio_url)} onError={() => setUnavailableAudio(current.audio_url)} />}<small className="checksum">SHA-256: {current.audio_sha256}</small></> : <Notice>Chưa có audio cho ngôn ngữ này.</Notice>}
       {editable && poi.status !== 'archived' && <Field label="Tải hoặc thay MP3 tối đa 15 MB"><input type="file" accept="audio/mpeg,.mp3" disabled={busy || dirty || !current || mode !== 'live'} onChange={event => { void upload(event.target.files?.[0]); event.target.value = '' }} /></Field>}
     </section>
     {can('audio.trigger_regenerate') && poi.status !== 'archived' && <section className="regenerate-panel"><h3>Tạo lại bằng TTS</h3>

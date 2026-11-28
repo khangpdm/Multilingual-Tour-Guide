@@ -53,7 +53,7 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
 export async function listAll<T>(path: string): Promise<T[]> {
   const items: T[] = []
   for (let page = 1; ; page++) {
-    const result = await api<{ items: T[]; total: number }>(`${path}?page=${page}&page_size=100`)
+    const result = await api<{ items: T[]; total: number }>(`${path}${path.includes('?') ? '&' : '?'}page=${page}&page_size=100`)
     items.push(...result.items)
     if (items.length >= result.total || !result.items.length) return items
   }

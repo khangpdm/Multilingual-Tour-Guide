@@ -5,7 +5,7 @@ import './admin/theme.css'
 import { useState, type ReactNode } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Activity, BarChart3, Search, FileAudio, Globe, LayoutDashboard, LogOut, MapPin, Menu, ShieldCheck, Users, X } from 'lucide-react'
-import { AdminProvider, dateLabel, useAdmin } from './admin/store'
+import { AdminProvider, dateLabel, poiName, useAdmin } from './admin/store'
 import type { Permission } from './admin/types'
 import { AuthPage } from './features/auth/AuthPage'
 import { Accounts, AudioTasks, AuditLogs, Languages, Roles } from './features/management/Management'
@@ -13,7 +13,7 @@ import { PoiEditor, Pois, ZoneEditor, Zones } from './features/places/Places'
 import { Analytics } from './features/analytics/Analytics'
 import { OfflinePacks } from './features/offline/OfflinePacks'
 import { Statistics } from './features/dashboard/Statistics'
-import { DemoNotice, Empty, Heading, Status } from './shared/ui'
+import { CrudDialog, DemoNotice, Empty, Heading, Status } from './shared/ui'
 
 const navigation: { label: string; href: string; icon: typeof MapPin; permissions?: Permission[] }[] = [
   { label: 'Trang chủ', href: '/', icon: LayoutDashboard },
@@ -22,7 +22,7 @@ const navigation: { label: string; href: string; icon: typeof MapPin; permission
   { label: 'Ngôn ngữ', href: '/languages', icon: Globe, permissions: ['poi.view'] },
   { label: 'Tác vụ audio', href: '/audio-tasks', icon: FileAudio, permissions: ['audio.view_tasks'] },
   { label: 'Gói offline', href: '/offline-packs', icon: FileAudio, permissions: ['offline.view'] },
-  { label: 'Phân tích & heatmap', href: '/analytics', icon: BarChart3, permissions: ['analytics.view_overview', 'analytics.view_poi_reports', 'analytics.view_user_reports', 'heatmap.view_live', 'heatmap.view_trend'] },
+  { label: 'Phân tích & heatmap', href: '/analytics', icon: BarChart3, permissions: ['poi.view'] },
   { label: 'Tài khoản', href: '/accounts', icon: Users, permissions: ['user.view'] },
   { label: 'Vai trò & quyền', href: '/roles', icon: ShieldCheck, permissions: ['role.view'] },
   { label: 'Nhật ký thao tác', href: '/audit-logs', icon: Activity, permissions: ['audit.view'] },
@@ -69,7 +69,8 @@ function Overview() {
 </div>
 }
 function RoutedPage() {
-  const { user, ready, can } = useAdmin()
+  const { user, ready, can, data, busy } = useAdmin()
+  const navigate = useNavigate()
   const path = useLocation().pathname.replace(/\/+$/, '') || '/'
   if (path === '/activate') return <AuthPage key="activate" activation />
   if (path === '/reset-password') return <AuthPage key="reset-password" reset />
@@ -77,13 +78,26 @@ function RoutedPage() {
   if (!user) return path === '/login' ? <AuthPage /> : <Navigate to="/login" replace />
   if (path === '/login') return <Navigate to="/" replace />
   const entry = navigation.find(item => path === item.href || (item.href !== '/' && path.startsWith(item.href + '/')))
+  const poiDetail = path.match(/^\/pois\/([^/]+)$/)?.[1]
+  const zoneDetail = path.match(/^\/zones\/([^/]+)(?:\/edit)?$/)?.[1]
+  const selectedPoi = data.pois.find(poi => poi.poi_id === poiDetail)
+  const selectedZone = data.zones.find(zone => zone.zone_id === zoneDetail)
+  const basePath = poiDetail ? '/pois' : zoneDetail ? '/zones' : path
   let content: ReactNode = <Empty text="Trang không tồn tại." />
   if (entry?.permissions && !entry.permissions.some(can)) content = <Empty text="Bạn không có quyền truy cập trang này." />
   else if (path === '/') content = <Overview />
-  else if (path === '/pois') content = <Pois />
-  else if (/^\/pois\/[^/]+$/.test(path)) content = <PoiEditor key={path} id={path.split('/')[2]} />
-  else if (path === '/zones') content = <Zones />
-  else if (/^\/zones\/[^/]+(?:\/edit)?$/.test(path)) content = <ZoneEditor key={path} id={path.split('/')[2]} />
+  else if (basePath === '/pois') content = <>
+    <Pois />
+    {poiDetail && <CrudDialog title={selectedPoi ? poiName(selectedPoi) : poiDetail === 'new' ? 'Tạo địa điểm' : 'Chi tiết địa điểm'} size="wide" onClose={() => { if (!busy) navigate('/pois', { replace: true }) }}>
+      <PoiEditor key={poiDetail} id={poiDetail} />
+    </CrudDialog>}
+  </>
+  else if (basePath === '/zones') content = <>
+    <Zones />
+    {zoneDetail && <CrudDialog title={selectedZone?.name ?? (zoneDetail === 'new' ? 'Tạo khu vực' : 'Chi tiết khu vực')} size="wide" onClose={() => { if (!busy) navigate('/zones', { replace: true }) }}>
+      <ZoneEditor key={zoneDetail} id={zoneDetail} />
+    </CrudDialog>}
+  </>
   else if (path === '/languages') content = <Languages />
   else if (path === '/roles') content = <Roles />
   else if (path === '/accounts') content = <Accounts />
@@ -91,6 +105,6 @@ function RoutedPage() {
   else if (path === '/offline-packs') content = <OfflinePacks />
   else if (path === '/audit-logs') content = <AuditLogs />
   else if (path === '/analytics') content = <Analytics />
-  return <Shell title={entry?.label || 'Không tìm thấy'}><div key={`${user.role_id}:${path}`}>{content}</div></Shell>
+  return <Shell title={entry?.label || 'Không tìm thấy'}><div key={`${user.role_id}:${basePath}`}>{content}</div></Shell>
 }
 export default function App() { return <AdminProvider><RoutedPage /></AdminProvider> }
